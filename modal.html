@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>point_down</title>
+    <link rel="stylesheet" href="modal.css" />
+</head>
+
+<body>
+    <div class="wrap">
+        <header>
+            <h1>point_down</h1>
+            <div class="actions">
+                <button id="refreshBtn" title="Recarregar">↻</button>
+                <a href="options.html" target="_blank" class="opt">⚙ opções</a>
+            </div>
+        </header>
+
+        <div id="status" class="status">Carregando issues da sprint atual...</div>
+
+        <div id="list" class="list"></div>
+
+        <footer>
+            <button id="saveBtn">Save</button>
+            <button id="saveExitBtn">Save & Exit</button>
+            <button id="exitBtn">Exit</button>
+        </footer>
+    </div>
+
+    <template id="itemTpl">
+        <div class="card">
+            <div class="top">
+                <a class="key" target="_blank" rel="noopener noreferrer"></a>
+                <div class="summary"></div>
+            </div>
+            <div class="controls">
+                <button class="down" title="Point Down">▼</button>
+                <input class="sp" type="number" step="0.5" min="0" />
+                <button class="up" title="Point Up">▲</button>
+            </div>
+            <div class="dirty hidden">*modificado</div>
+        </div>
+    </template>
+
+    <script src="modal.js"></script>
+</body>
+
+</html>

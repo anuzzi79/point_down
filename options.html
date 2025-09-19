@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>point_down • Options</title>
+    <style>
+        body {
+            font-family: system-ui, Arial, sans-serif;
+            padding: 16px;
+            max-width: 820px;
+        }
+
+        label {
+            display: block;
+            margin: 10px 0 4px;
+            font-weight: 600;
+        }
+
+        input[type=text],
+        input[type=password],
+        input[type=time] {
+            width: 100%;
+            padding: 8px;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .row>div {
+            flex: 1;
+        }
+
+        button {
+            margin-top: 16px;
+            padding: 10px 14px;
+            cursor: pointer;
+        }
+
+        small {
+            color: #666;
+        }
+
+        hr {
+            margin: 22px 0;
+            border: none;
+            border-top: 1px solid #ddd;
+        }
+
+        .hint {
+            color: #555;
+            font-size: 13px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>point_down • Options</h1>
+
+    <label>Jira Base URL</label>
+    <input id="baseUrl" type="text" placeholder="https://facilitygrid.atlassian.net" />
+
+    <div class="row">
+        <div>
+            <label>Email</label>
+            <input id="email" type="text" placeholder="nome@empresa.com" />
+        </div>
+        <div>
+            <label>API Token</label>
+            <input id="token" type="password" placeholder="Jira API Token" />
+        </div>
+    </div>
+
+    <label>JQL (opcional, para filtrar issues)</label>
+    <input id="jql" type="text"
+        placeholder='sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done' />
+
+    <small class="hint">
+        Dica: por padrão usamos
+        <code>sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done</code>.
+        Configure aqui se quiser algo mais específico (ex.: por projeto/equipe).
+    </small>
+
+    <div>
+        <button id="saveBtn">Salvar</button>
+        <button id="testBtn">Testar conexão</button>
+        <span id="status"></span>
+    </div>
+
+    <hr />
+
+    <h2>Agendamento do modal</h2>
+    <label>Hora diária para abrir automaticamente o modal</label>
+    <input id="alarmTime" type="time" step="60" />
+    <small class="hint">Ex.: 17:50. O modal será aberto automaticamente todos os dias nesse horário (hora
+        local).</small>
+
+    <script type="module" src="options.js"></script>
+</body>
+
+</html>
