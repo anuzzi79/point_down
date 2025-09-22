@@ -44,14 +44,13 @@ let FIELD_CACHE = null;
 async function resolveStoryPointsFieldId() {
     if (FIELD_CACHE?.spFieldId) return FIELD_CACHE.spFieldId;
 
-    // 1) Usa SEMPRE o ID fixo descoberto pela “pesca”
     if (SP_FIELD_ID_FIXED) {
         FIELD_CACHE = { spFieldId: SP_FIELD_ID_FIXED, spFieldName: SP_FIELD_NAME_FIXED };
         console.log('[point_down] Story Points field (fixed):', FIELD_CACHE.spFieldName, FIELD_CACHE.spFieldId);
         return FIELD_CACHE.spFieldId;
     }
 
-    // 2) (fallback — não deve acontecer porque temos o fixo)
+    // (fallback não usado porque temos o fixo)
     const { baseUrl, email, token } = await getAuth();
     const r = await fetchWithTimeout(`${baseUrl}/rest/api/3/field`, {
         headers: headers(email, token)
@@ -73,14 +72,9 @@ async function resolveStoryPointsFieldId() {
     return match.id;
 }
 
-// ======= Jira: search via /search/jql (POST + nextPageToken) =======
-async function fetchCurrentSprintIssues() {
-    const { baseUrl, email, token, jql } = await getAuth();
-    const spFieldId = await resolveStoryPointsFieldId();
-
-    const finalJql = (jql && jql.trim()) ? jql.trim()
-        : 'sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done';
-
+// ======= Jira: search helper via /search/jql (POST + nextPageToken) =======
+async function fetchIssuesByJql(finalJql, spFieldId) {
+    const { baseUrl, email, token } = await getAuth();
     const fields = ["summary", spFieldId];
     let nextPageToken = null;
     const maxResults = 100;
@@ -91,7 +85,7 @@ async function fetchCurrentSprintIssues() {
             jql: finalJql,
             fields,
             maxResults,
-            nextPageToken // null na 1ª chamada
+            nextPageToken
         });
 
         const r = await fetchWithTimeout(`${baseUrl}/rest/api/3/search/jql`, {
@@ -119,6 +113,25 @@ async function fetchCurrentSprintIssues() {
     }));
 }
 
+// JQL padrão (assignee = currentUser) — já respeita custom JQL salvo nas opções
+async function fetchCurrentSprintIssues() {
+    const { jql } = await getAuth();
+    const spFieldId = await resolveStoryPointsFieldId();
+    const finalJql = (jql && jql.trim())
+        ? jql.trim()
+        : 'sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done';
+    return fetchIssuesByJql(finalJql, spFieldId);
+}
+
+// JQL especial: títulos contendo explorat* ou regres*/regress* (independente de assignee)
+async function fetchSpecialSprintIssues() {
+    const spFieldId = await resolveStoryPointsFieldId();
+    // ~ é "contains" (case-insensitive). Usiamo termini senza * per ampliare il match.
+    const specialJql =
+        'sprint in openSprints() AND (summary ~ "explorat" OR summary ~ "regres" OR summary ~ "regress")';
+    return fetchIssuesByJql(specialJql, spFieldId);
+}
+
 // ======= Jira: update SP =======
 async function updateStoryPoints(issueKey, newValue) {
     const { baseUrl, email, token } = await getAuth();
@@ -138,24 +151,44 @@ async function updateStoryPoints(issueKey, newValue) {
 
 // ======= UI =======
 const listEl = document.getElementById('list');
+const specialSectionEl = document.getElementById('specialSection');
+const specialListEl = document.getElementById('specialList');
+
 const saveBtn = document.getElementById('saveBtn');
 const saveExitBtn = document.getElementById('saveExitBtn');
 const exitBtn = document.getElementById('exitBtn');
 const refreshBtn = document.getElementById('refreshBtn');
 
-let MODEL = [];
+let MODEL_MAIN = [];
+let MODEL_SPECIAL = [];
 let SAVING = false;
 let watchdog = null;
 
 refreshBtn.addEventListener('click', () => init());
-exitBtn.addEventListener('click', () => window.close());
+exitBtn.addEventListener('click', () => {
+    // segnala chiusura per fermare il lampeggio
+    try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
+    window.close();
+});
 saveBtn.addEventListener('click', async () => { await doSave(false); });
-saveExitBtn.addEventListener('click', async () => { const ok = await doSave(true); if (ok) window.close(); });
+saveExitBtn.addEventListener('click', async () => {
+    const ok = await doSave(true);
+    if (ok) {
+        // dopo un salvataggio (con o senza modifiche), il click è "exit"
+        try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
+        window.close();
+    }
+});
 
-function render() {
-    listEl.innerHTML = '';
+// In caso l’utente chiuda la tab/finestrella manualmente
+window.addEventListener('beforeunload', () => {
+    try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
+});
+
+function renderList(targetEl, arr) {
+    targetEl.innerHTML = '';
     const tpl = document.getElementById('itemTpl');
-    MODEL.forEach(item => {
+    arr.forEach(item => {
         const node = tpl.content.cloneNode(true);
         const keyA = node.querySelector('.key');
         const sumD = node.querySelector('.summary');
@@ -176,8 +209,20 @@ function render() {
         dnB.addEventListener('click', () => { const nv = clampHalf((+spI.value) - 0.5); spI.value = nv; item.newSp = nv; setDirty(true); });
         spI.addEventListener('change', () => { const nv = clampHalf(spI.value); spI.value = nv; item.newSp = nv; setDirty(true); });
 
-        listEl.appendChild(node);
+        targetEl.appendChild(node);
     });
+}
+
+function render() {
+    renderList(listEl, MODEL_MAIN);
+
+    if (MODEL_SPECIAL.length > 0) {
+        specialSectionEl.classList.remove('hidden');
+        renderList(specialListEl, MODEL_SPECIAL);
+    } else {
+        specialSectionEl.classList.add('hidden');
+        specialListEl.innerHTML = '';
+    }
 }
 
 async function doSave(exitAfter) {
@@ -185,12 +230,21 @@ async function doSave(exitAfter) {
     SAVING = true;
     setStatus('Salvando alterações…');
     try {
-        const dirty = MODEL.filter(m => m.dirty && (m.newSp ?? m.sp) !== m.sp);
+        const dirtyMain = MODEL_MAIN.filter(m => m.dirty && (m.newSp ?? m.sp) !== m.sp);
+        const dirtySpec = MODEL_SPECIAL.filter(m => m.dirty && (m.newSp ?? m.sp) !== m.sp);
+        const dirty = [...dirtyMain, ...dirtySpec];
+
         for (const it of dirty) {
             await updateStoryPoints(it.key, it.newSp);
             it.sp = it.newSp;
             it.dirty = false;
         }
+
+        // a) Se abbiamo davvero salvato modifiche, avvisa il background di fermare il lampeggio
+        if (dirty.length > 0) {
+            try { chrome.runtime.sendMessage({ type: "pd:saved", changedCount: dirty.length }); } catch { }
+        }
+
         setStatus(dirty.length ? `✅ ${dirty.length} issue(s) atualizadas.` : 'Nada para salvar.');
         render();
         return true;
@@ -217,13 +271,26 @@ async function init() {
         const spName = (FIELD_CACHE && FIELD_CACHE.spFieldName) ? FIELD_CACHE.spFieldName : spId;
         setStatus(`Carregando issues da sprint atual... [SP: ${spName} (${spId})]`);
 
-        const issues = await fetchCurrentSprintIssues();
-        MODEL = issues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false }));
+        // Busca listas
+        const [mainIssues, specialIssues] = await Promise.all([
+            fetchCurrentSprintIssues(),
+            fetchSpecialSprintIssues()
+        ]);
+
+        // Deduplica special vs main (pela key)
+        const mainKeys = new Set(mainIssues.map(i => i.key));
+        const specialsDedup = specialIssues.filter(i => !mainKeys.has(i.key));
+
+        // Modelos (com metadados base)
+        MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false }));
+        MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, _special: true }));
+
         clearTimeout(watchdog);
-        setStatus(
-            (issues.length ? `Encontradas ${issues.length} issue(s).` : 'Nenhuma issue na sprint atual.') +
-            ` • Campo SP: ${spName} (${spId})`
-        );
+
+        const msgCountMain = MODEL_MAIN.length ? `Encontradas ${MODEL_MAIN.length} issue(s).` : 'Nenhuma issue na sprint atual.';
+        const msgCountSpec = MODEL_SPECIAL.length ? ` + ${MODEL_SPECIAL.length} card(s) especiais (explorat*/regres*).` : '';
+        setStatus(`${msgCountMain}${msgCountSpec} • Campo SP: ${spName} (${spId})`);
+
         render();
     } catch (e) {
         clearTimeout(watchdog);

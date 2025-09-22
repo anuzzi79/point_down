@@ -19,7 +19,14 @@
 
         <div id="status" class="status">Carregando issues da sprint atual...</div>
 
+        <!-- Lista principal (JQL padrão / opções) -->
         <div id="list" class="list"></div>
+
+        <!-- Seção especial: explorat* / regres* (independente de assignee) -->
+        <section id="specialSection" class="hidden">
+            <h2 class="special-title">Você pode estar precisando baixar também pontos destas cards</h2>
+            <div id="specialList" class="list"></div>
+        </section>
 
         <footer>
             <button id="saveBtn">Save</button>
