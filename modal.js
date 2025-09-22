@@ -2,12 +2,43 @@
 const SP_FIELD_ID_FIXED = "customfield_10022";         // ← risultato della “pesca”
 const SP_FIELD_NAME_FIXED = "Story Points (fixed)";    // etichetta informativa
 
+// URL fisso della board (Active sprints)
+const BOARD_URL_FIXED = "https://facilitygrid.atlassian.net/jira/software/c/projects/FGC/boards/34";
+
 // ======= Helpers base =======
 function setStatus(msg) {
     const el = document.getElementById('status');
     if (el) el.textContent = msg;
     console.log('[point_down]', msg);
 }
+
+// Mostra due link separati nello status: "Go to Sprint!" e "Board"
+function setStatusTwoLinks(sprintLabel, sprintHref, boardLabel, boardHref) {
+    const el = document.getElementById('status');
+    if (!el) return;
+    el.innerHTML = "";
+
+    const aSprint = document.createElement('a');
+    aSprint.textContent = sprintLabel;
+    aSprint.href = sprintHref;
+    aSprint.target = "_blank";
+    aSprint.rel = "noopener noreferrer";
+
+    const spacer = document.createTextNode("   ");
+
+    const aBoard = document.createElement('a');
+    aBoard.textContent = boardLabel;     // nessuna parentesi
+    aBoard.href = boardHref;
+    aBoard.target = "_blank";
+    aBoard.rel = "noopener noreferrer";
+
+    el.appendChild(aSprint);
+    el.appendChild(spacer);
+    el.appendChild(aBoard);
+
+    console.log('[point_down] status links ->', { sprintHref, boardHref });
+}
+
 function b64(s) { return btoa(s); }
 function headers(email, token) {
     return {
@@ -26,7 +57,8 @@ async function fetchWithTimeout(url, opts = {}, ms = 20000) {
     }
 }
 async function getAuth() {
-    const { baseUrl, email, token, jql } = await chrome.storage.sync.get(["baseUrl", "email", "token", "jql"]);
+    const { baseUrl, email, token, jql } =
+        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql"]);
     if (!baseUrl || !email || !token) {
         throw new Error("Credenciais Jira não configuradas. Abra 'opções' e preencha Base URL, Email e Token.");
     }
@@ -38,7 +70,7 @@ let FIELD_CACHE = null;
 
 /**
  * Resolve o ID do campo de Story Points.
- * Prioriza o ID FIXO descoberto (customfield_10022) para garantir que
+ * Prioriza o ID FIXO descoberto (customfield_10022) para garantir che
  * lemos/escrevemos exatamente o campo certo.
  */
 async function resolveStoryPointsFieldId() {
@@ -126,7 +158,7 @@ async function fetchCurrentSprintIssues() {
 // JQL especial: títulos contendo explorat* ou regres*/regress* (independente de assignee)
 async function fetchSpecialSprintIssues() {
     const spFieldId = await resolveStoryPointsFieldId();
-    // ~ é "contains" (case-insensitive). Usiamo termini senza * per ampliare il match.
+    // ~ è "contains" (case-insensitive). Usiamo termini senza * per ampliare il match.
     const specialJql =
         'sprint in openSprints() AND (summary ~ "explorat" OR summary ~ "regres" OR summary ~ "regress")';
     return fetchIssuesByJql(specialJql, spFieldId);
@@ -287,9 +319,14 @@ async function init() {
 
         clearTimeout(watchdog);
 
-        const msgCountMain = MODEL_MAIN.length ? `Encontradas ${MODEL_MAIN.length} issue(s).` : 'Nenhuma issue na sprint atual.';
-        const msgCountSpec = MODEL_SPECIAL.length ? ` + ${MODEL_SPECIAL.length} card(s) especiais (explorat*/regres*).` : '';
-        setStatus(`${msgCountMain}${msgCountSpec} • Campo SP: ${spName} (${spId})`);
+        // URL sprint list (search) con JQL
+        const sprintListUrl = `${baseUrl.replace(/\/+$/, '')}/issues/?jql=${encodeURIComponent('sprint in openSprints()')}`;
+
+        // URL board fisso
+        const boardHref = BOARD_URL_FIXED;
+
+        // Mostra due link separati
+        setStatusTwoLinks('Go to Sprint!', sprintListUrl, 'Board', boardHref);
 
         render();
     } catch (e) {

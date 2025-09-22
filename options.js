@@ -3,10 +3,7 @@
 async function testAuthStandalone({ baseUrl, email, token }) {
     const auth = btoa(`${email}:${token}`);
     const r = await fetch(`${baseUrl}/rest/api/3/myself`, {
-        headers: {
-            "Authorization": `Basic ${auth}`,
-            "Accept": "application/json"
-        }
+        headers: { "Authorization": `Basic ${auth}`, "Accept": "application/json" }
     });
     return r.ok;
 }
