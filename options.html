@@ -75,11 +75,10 @@
 
     <label>JQL (opcional, para filtrar issues)</label>
     <input id="jql" type="text"
-        placeholder='sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done' />
+        placeholder='sprint in openSprints() AND assignee = currentUser() AND status = "In Progress"' />
     <small class="hint">
-        Dica: por padrão usamos
-        <code>sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done</code>.
-        Configure aqui se quiser algo mais específico (ex.: por projeto/equipe).
+        Padrão:
+        <code>sprint in openSprints() AND assignee = currentUser() AND status = "In Progress"</code>.
     </small>
 
     <div>

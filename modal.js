@@ -65,6 +65,14 @@ async function getAuth() {
     return { baseUrl, email, token, jql };
 }
 
+// ======= JQL helper: forza status = "In Progress" =======
+function jqlWithInProgress(baseJql) {
+    const trimmed = (baseJql || "").trim();
+    if (!trimmed) return 'status = "In Progress"';
+    // Enforce universally: (base) AND status="In Progress"
+    return `(${trimmed}) AND status = "In Progress"`;
+}
+
 // ======= Jira: field cache + resolve SP field =======
 let FIELD_CACHE = null;
 
@@ -148,10 +156,13 @@ async function fetchIssuesByJql(finalJql, spFieldId) {
 // JQL padrão (assignee = currentUser) — já respeita custom JQL salvo nas opções
 async function fetchCurrentSprintIssues() {
     const { jql } = await getAuth();
-    const spFieldId = await resolveStoryPointsFieldId();
-    const finalJql = (jql && jql.trim())
+    // Base default se não houver JQL custom
+    const base = (jql && jql.trim())
         ? jql.trim()
         : 'sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done';
+    // Força status "In Progress" em qualquer caso
+    const finalJql = jqlWithInProgress(base);
+    const spFieldId = await resolveStoryPointsFieldId();
     return fetchIssuesByJql(finalJql, spFieldId);
 }
 
@@ -159,8 +170,9 @@ async function fetchCurrentSprintIssues() {
 async function fetchSpecialSprintIssues() {
     const spFieldId = await resolveStoryPointsFieldId();
     // ~ è "contains" (case-insensitive). Usiamo termini senza * per ampliare il match.
-    const specialJql =
+    const specialBase =
         'sprint in openSprints() AND (summary ~ "explorat" OR summary ~ "regres" OR summary ~ "regress")';
+    const specialJql = jqlWithInProgress(specialBase);
     return fetchIssuesByJql(specialJql, spFieldId);
 }
 

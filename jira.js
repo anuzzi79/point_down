@@ -1,13 +1,22 @@
 // jira.js — versão compatível com /rest/api/3/search/jql (pagina com nextPageToken)
 // (mantido aqui para compat; o modal usa sua própria implementação standalone)
 
+function jqlWithInProgress(baseJql) {
+    const trimmed = (baseJql || "").trim();
+    if (!trimmed) return 'status = "In Progress"';
+    return `(${trimmed}) AND status = "In Progress"`;
+}
+
 export async function fetchCurrentSprintIssues() {
     const { baseUrl, email, token, jql } = await getAuth();
     const spFieldId = await resolveStoryPointsFieldId();
 
-    const finalJql = (jql && jql.trim().length > 0)
+    const base = (jql && jql.trim().length > 0)
         ? jql.trim()
         : 'sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done';
+
+    // Enforce universalmente: status deve ser "In Progress"
+    const finalJql = jqlWithInProgress(base);
 
     const fields = ["summary", spFieldId];
 
