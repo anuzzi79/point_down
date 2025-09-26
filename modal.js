@@ -65,11 +65,13 @@ async function getAuth() {
     return { baseUrl, email, token, jql };
 }
 
-// ======= JQL helper: forza status IN ("In Progress","Blocked") =======
+// ======= JQL helper: forza status IN ("In Progress","Blocked","Need Reqs") =======
 function jqlWithInProgress(baseJql) {
     const trimmed = (baseJql || "").trim();
-    if (!trimmed) return 'status IN ("In Progress", "Blocked")';
-    return `(${trimmed}) AND status IN ("In Progress", "Blocked")`;
+    const STATUSES = ["In Progress", "Blocked", "Need Reqs"];
+    const clause = `status IN (${STATUSES.map(s => `"${s}"`).join(", ")})`;
+    if (!trimmed) return clause;
+    return `(${trimmed}) AND ${clause}`;
 }
 
 // ======= Jira: field cache + resolve SP field =======

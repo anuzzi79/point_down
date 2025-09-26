@@ -73,13 +73,9 @@
         </div>
     </div>
 
-    <label>JQL (opcional, para filtrar issues)</label>
-    <input id="jql" type="text"
-        placeholder='sprint in openSprints() AND assignee = currentUser() AND status IN ("In Progress", "Blocked")' />
-    <small class="hint">
-        Padrão:
-        <code>sprint in openSprints() AND assignee = currentUser() AND status IN ("In Progress", "Blocked")</code>.
-    </small>
+    <label>JQL (opcional, para filtrar os cards)</label>
+    <input id="jql" type="text" placeholder='sprint in openSprints() AND assignee = currentUser()' />
+    <small class="hint"></small>
 
     <div>
         <button id="saveBtn">Salvar</button>
