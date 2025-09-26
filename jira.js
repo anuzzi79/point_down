@@ -3,8 +3,8 @@
 
 function jqlWithInProgress(baseJql) {
     const trimmed = (baseJql || "").trim();
-    if (!trimmed) return 'status = "In Progress"';
-    return `(${trimmed}) AND status = "In Progress"`;
+    if (!trimmed) return 'status IN ("In Progress", "Blocked")';
+    return `(${trimmed}) AND status IN ("In Progress", "Blocked")`;
 }
 
 export async function fetchCurrentSprintIssues() {
@@ -15,7 +15,7 @@ export async function fetchCurrentSprintIssues() {
         ? jql.trim()
         : 'sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done';
 
-    // Enforce universalmente: status deve ser "In Progress"
+    // Enforce universalmente: status deve ser "In Progress" ou "Blocked"
     const finalJql = jqlWithInProgress(base);
 
     const fields = ["summary", spFieldId];

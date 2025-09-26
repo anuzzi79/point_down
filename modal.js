@@ -27,7 +27,7 @@ function setStatusTwoLinks(sprintLabel, sprintHref, boardLabel, boardHref) {
     const spacer = document.createTextNode("   ");
 
     const aBoard = document.createElement('a');
-    aBoard.textContent = boardLabel;     // nessuna parentesi
+    aBoard.textContent = boardLabel;
     aBoard.href = boardHref;
     aBoard.target = "_blank";
     aBoard.rel = "noopener noreferrer";
@@ -65,12 +65,11 @@ async function getAuth() {
     return { baseUrl, email, token, jql };
 }
 
-// ======= JQL helper: forza status = "In Progress" =======
+// ======= JQL helper: forza status IN ("In Progress","Blocked") =======
 function jqlWithInProgress(baseJql) {
     const trimmed = (baseJql || "").trim();
-    if (!trimmed) return 'status = "In Progress"';
-    // Enforce universally: (base) AND status="In Progress"
-    return `(${trimmed}) AND status = "In Progress"`;
+    if (!trimmed) return 'status IN ("In Progress", "Blocked")';
+    return `(${trimmed}) AND status IN ("In Progress", "Blocked")`;
 }
 
 // ======= Jira: field cache + resolve SP field =======
@@ -90,7 +89,7 @@ async function resolveStoryPointsFieldId() {
         return FIELD_CACHE.spFieldId;
     }
 
-    // (fallback não usado porque temos o fixo)
+    // (fallback non usato perché abbiamo il fisso)
     const { baseUrl, email, token } = await getAuth();
     const r = await fetchWithTimeout(`${baseUrl}/rest/api/3/field`, {
         headers: headers(email, token)
@@ -156,11 +155,9 @@ async function fetchIssuesByJql(finalJql, spFieldId) {
 // JQL padrão (assignee = currentUser) — já respeita custom JQL salvo nas opções
 async function fetchCurrentSprintIssues() {
     const { jql } = await getAuth();
-    // Base default se não houver JQL custom
     const base = (jql && jql.trim())
         ? jql.trim()
         : 'sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done';
-    // Força status "In Progress" em qualquer caso
     const finalJql = jqlWithInProgress(base);
     const spFieldId = await resolveStoryPointsFieldId();
     return fetchIssuesByJql(finalJql, spFieldId);
@@ -169,7 +166,6 @@ async function fetchCurrentSprintIssues() {
 // JQL especial: títulos contendo explorat* ou regres*/regress* (independente de assignee)
 async function fetchSpecialSprintIssues() {
     const spFieldId = await resolveStoryPointsFieldId();
-    // ~ è "contains" (case-insensitive). Usiamo termini senza * per ampliare il match.
     const specialBase =
         'sprint in openSprints() AND (summary ~ "explorat" OR summary ~ "regres" OR summary ~ "regress")';
     const specialJql = jqlWithInProgress(specialBase);
@@ -210,7 +206,6 @@ let watchdog = null;
 
 refreshBtn.addEventListener('click', () => init());
 exitBtn.addEventListener('click', () => {
-    // segnala chiusura per fermare il lampeggio
     try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
     window.close();
 });
@@ -218,13 +213,11 @@ saveBtn.addEventListener('click', async () => { await doSave(false); });
 saveExitBtn.addEventListener('click', async () => {
     const ok = await doSave(true);
     if (ok) {
-        // dopo un salvataggio (con o senza modifiche), il click è "exit"
         try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
         window.close();
     }
 });
 
-// In caso l’utente chiuda la tab/finestrella manualmente
 window.addEventListener('beforeunload', () => {
     try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
 });
@@ -284,7 +277,6 @@ async function doSave(exitAfter) {
             it.dirty = false;
         }
 
-        // a) Se abbiamo davvero salvato modifiche, avvisa il background di fermare il lampeggio
         if (dirty.length > 0) {
             try { chrome.runtime.sendMessage({ type: "pd:saved", changedCount: dirty.length }); } catch { }
         }
@@ -315,29 +307,22 @@ async function init() {
         const spName = (FIELD_CACHE && FIELD_CACHE.spFieldName) ? FIELD_CACHE.spFieldName : spId;
         setStatus(`Carregando issues da sprint atual... [SP: ${spName} (${spId})]`);
 
-        // Busca listas
         const [mainIssues, specialIssues] = await Promise.all([
             fetchCurrentSprintIssues(),
             fetchSpecialSprintIssues()
         ]);
 
-        // Deduplica special vs main (pela key)
         const mainKeys = new Set(mainIssues.map(i => i.key));
         const specialsDedup = specialIssues.filter(i => !mainKeys.has(i.key));
 
-        // Modelos (com metadados base)
         MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false }));
         MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, _special: true }));
 
         clearTimeout(watchdog);
 
-        // URL sprint list (search) con JQL
         const sprintListUrl = `${baseUrl.replace(/\/+$/, '')}/issues/?jql=${encodeURIComponent('sprint in openSprints()')}`;
-
-        // URL board fisso
         const boardHref = BOARD_URL_FIXED;
 
-        // Mostra due link separati
         setStatusTwoLinks('Go to Sprint!', sprintListUrl, 'Board', boardHref);
 
         render();
