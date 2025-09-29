@@ -65,10 +65,10 @@ async function getAuth() {
     return { baseUrl, email, token, jql };
 }
 
-// ======= JQL helper: forza status IN ("In Progress","Blocked","Need Reqs") =======
+// ======= JQL helper: forza status IN ("In Progress","Blocked","Need Reqs","Done") =======
 function jqlWithInProgress(baseJql) {
     const trimmed = (baseJql || "").trim();
-    const STATUSES = ["In Progress", "Blocked", "Need Reqs"];
+    const STATUSES = ["In Progress", "Blocked", "Need Reqs", "Done"];
     const clause = `status IN (${STATUSES.map(s => `"${s}"`).join(", ")})`;
     if (!trimmed) return clause;
     return `(${trimmed}) AND ${clause}`;
@@ -79,7 +79,7 @@ let FIELD_CACHE = null;
 
 /**
  * Resolve o ID do campo de Story Points.
- * Prioriza o ID FIXO descoberto (customfield_10022) para garantir che
+ * Prioriza o ID FIXO descoberto (customfield_10022) per garantire che
  * lemos/escrevemos exatamente o campo certo.
  */
 async function resolveStoryPointsFieldId() {
@@ -147,11 +147,12 @@ async function fetchIssuesByJql(finalJql, spFieldId) {
         nextPageToken = data.nextPageToken;
     }
 
+    // ordinamento per punti residui (sp) decrescente
     return all.map(it => ({
         key: it.key,
         summary: it.fields.summary,
         sp: it.fields[spFieldId] ?? 0,
-    }));
+    })).sort((a, b) => (b.sp || 0) - (a.sp || 0));
 }
 
 // JQL padrão (assignee = currentUser) — já respeita custom JQL salvo nas opções

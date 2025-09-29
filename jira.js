@@ -3,8 +3,10 @@
 
 function jqlWithInProgress(baseJql) {
     const trimmed = (baseJql || "").trim();
-    if (!trimmed) return 'status IN ("In Progress", "Blocked")';
-    return `(${trimmed}) AND status IN ("In Progress", "Blocked")`;
+    const STATUSES = ["In Progress", "Blocked", "Need Reqs", "Done"];
+    const clause = `status IN (${STATUSES.map(s => `"${s}"`).join(", ")})`;
+    if (!trimmed) return clause;
+    return `(${trimmed}) AND ${clause}`;
 }
 
 export async function fetchCurrentSprintIssues() {
@@ -15,7 +17,7 @@ export async function fetchCurrentSprintIssues() {
         ? jql.trim()
         : 'sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done';
 
-    // Enforce universalmente: status deve ser "In Progress" ou "Blocked"
+    // Enforce universalmente: status deve essere "In Progress", "Blocked", "Need Reqs" o "Done"
     const finalJql = jqlWithInProgress(base);
 
     const fields = ["summary", spFieldId];
@@ -54,11 +56,12 @@ export async function fetchCurrentSprintIssues() {
         nextPageToken = data.nextPageToken;
     }
 
+    // ordinamento per SP decrescente
     return all.map(it => ({
         key: it.key,
         summary: it.fields.summary,
         sp: it.fields[spFieldId] ?? 0,
-    }));
+    })).sort((a, b) => (b.sp || 0) - (a.sp || 0));
 }
 
 // Nota: neste arquivo não está definida getAuth()/resolveStoryPointsFieldId(),
