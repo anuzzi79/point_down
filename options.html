@@ -77,11 +77,15 @@
     <input id="jql" type="text" placeholder='sprint in openSprints() AND assignee = currentUser()' />
     <small class="hint"></small>
 
-    <div>
-        <button id="saveBtn">Salvar</button>
-        <button id="testBtn">Testar conexão</button>
-        <span id="status"></span>
-    </div>
+    <hr />
+
+    <h2>Preferências</h2>
+    <label>
+        <input type="checkbox" id="forceTestCard" />
+        <span>Sim, quero que apareça a card de teste! (FGC-9683)</span>
+    </label>
+    <small class="hint">Quando marcado, o Point Down sempre adiciona a card de teste FGC-9683 à lista, mesmo que o seu
+        JQL não a traga.</small>
 
     <hr />
 
@@ -90,6 +94,12 @@
     <input id="alarmTime" type="time" step="60" />
     <small class="hint">Ex.: 17:50. O modal será aberto automaticamente todos os dias nesse horário (hora
         local).</small>
+
+    <div style="margin-top:16px">
+        <button id="saveBtn">Salvar</button>
+        <button id="testBtn">Testar conexão</button>
+        <span id="status"></span>
+    </div>
 
     <script type="module" src="options.js"></script>
 </body>

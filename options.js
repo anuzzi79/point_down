@@ -14,12 +14,14 @@ const tokenEl = document.getElementById('token');
 const jqlEl = document.getElementById('jql');
 const alarmEl = document.getElementById('alarmTime');
 const statusEl = document.getElementById('status');
+const forceTestCardEl = document.getElementById('forceTestCard');
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
     const baseUrl = (baseUrlEl.value || '').trim();
     const email = (emailEl.value || '').trim();
     const token = (tokenEl.value || '').trim();
     const jql = (jqlEl.value || '').trim();
+    const forceTestCard = !!forceTestCardEl.checked;
 
     // valida e normaliza alarmTime
     let alarmTime = (alarmEl.value || '').trim(); // "HH:MM"
@@ -28,7 +30,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
         alarmTime = undefined;
     }
 
-    await chrome.storage.sync.set({ baseUrl, email, token, jql, alarmTime });
+    await chrome.storage.sync.set({ baseUrl, email, token, jql, alarmTime, forceTestCard });
     statusEl.textContent = '✔️ Configurações salvas.';
     setTimeout(() => statusEl.textContent = '', 2500);
 });
@@ -51,8 +53,8 @@ document.getElementById('testBtn').addEventListener('click', async () => {
 });
 
 (async function init() {
-    const { baseUrl, email, token, jql, alarmTime } =
-        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql", "alarmTime"]);
+    const { baseUrl, email, token, jql, alarmTime, forceTestCard } =
+        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql", "alarmTime", "forceTestCard"]);
 
     if (baseUrl) baseUrlEl.value = baseUrl;
     if (email) emailEl.value = email;
@@ -64,5 +66,12 @@ document.getElementById('testBtn').addEventListener('click', async () => {
         alarmEl.value = alarmTime;
     } else {
         alarmEl.value = "17:50";
+    }
+
+    // forceTestCard default: true
+    if (typeof forceTestCard === 'boolean') {
+        forceTestCardEl.checked = forceTestCard;
+    } else {
+        forceTestCardEl.checked = true;
     }
 })();
