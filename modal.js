@@ -175,6 +175,49 @@ async function fetchSpecialSprintIssues() {
     return fetchIssuesByJql(specialJql, spFieldId);
 }
 
+/**
+ * === Forzatura: fetch diretto per una issue specifica per chiave (es. "FGC-9683")
+ * Ignora qualquer critério JQL do fluxo principal.
+ */
+async function fetchIssueByKey(issueKey) {
+    const { baseUrl, email, token } = await getAuth();
+    const spFieldId = await resolveStoryPointsFieldId();
+    const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=${encodeURIComponent("summary," + spFieldId)}`;
+
+    const r = await fetchWithTimeout(url, { headers: headers(email, token) }, 20000);
+    if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        throw new Error(`Falha ao buscar issue ${issueKey}: ` + (txt || r.status));
+    }
+    const data = await r.json();
+    return {
+        key: data.key,
+        summary: data.fields?.summary || "(sem resumo)",
+        sp: data.fields?.[spFieldId] ?? 0
+    };
+}
+
+// ======= PAS helper (punteggio al momento del Save) =======
+async function fetchPAS(issueKey) {
+    const { baseUrl, email, token } = await getAuth();
+    const spFieldId = await resolveStoryPointsFieldId();
+    const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=${encodeURIComponent(spFieldId + ',summary')}`;
+
+    const r = await fetchWithTimeout(url, {
+        headers: headers(email, token)
+    }, 15000);
+
+    if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        throw new Error(`Falha ao obter PAS de ${issueKey}: ` + (txt || r.status));
+    }
+    const data = await r.json();
+    return {
+        pas: data?.fields?.[spFieldId] ?? 0,
+        summary: data?.fields?.summary || "(sem resumo)"
+    };
+}
+
 // ======= Jira: update SP =======
 async function updateStoryPoints(issueKey, newValue) {
     const { baseUrl, email, token } = await getAuth();
@@ -207,12 +250,22 @@ let MODEL_SPECIAL = [];
 let SAVING = false;
 let watchdog = null;
 
+// Util per arrotondare a step 0.5 e clamp a >= 0
+const clampHalfValue = (v) => {
+    let n = Math.round((parseFloat(v) || 0) * 2) / 2;
+    return n < 0 ? 0 : n;
+};
+
 refreshBtn.addEventListener('click', () => init());
 exitBtn.addEventListener('click', () => {
     try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
     window.close();
 });
-saveBtn.addEventListener('click', async () => { await doSave(false); });
+saveBtn.addEventListener('click', async () => {
+    const ok = await doSave(false);
+    // 🔄 Refresh generale del modale dopo SAVE (come il tasto Refresh)
+    if (ok) await init();
+});
 saveExitBtn.addEventListener('click', async () => {
     const ok = await doSave(true);
     if (ok) {
@@ -270,14 +323,48 @@ async function doSave(exitAfter) {
     SAVING = true;
     setStatus('Salvando alterações…');
     try {
+        // Considera dirty real: valore modificato rispetto allo sp originale attuale nel MODEL
         const dirtyMain = MODEL_MAIN.filter(m => m.dirty && (m.newSp ?? m.sp) !== m.sp);
         const dirtySpec = MODEL_SPECIAL.filter(m => m.dirty && (m.newSp ?? m.sp) !== m.sp);
         const dirty = [...dirtyMain, ...dirtySpec];
 
         for (const it of dirty) {
-            await updateStoryPoints(it.key, it.newSp);
-            it.sp = it.newSp;
+            // --- Definizioni ---
+            // PTS: punteggio totale allo start (alla prima importazione della lista)
+            const PTS = typeof it.pts === 'number' ? it.pts : it.sp;   // fallback sullo sp letto all'init
+            // nuovo punteggio impostato dall'utente nel modale
+            const userNew = (typeof it.newSp === 'number') ? it.newSp : it.sp;
+            // lova: lowered_value = PTS - userNew (può essere negativo se si è alzato)
+            const lova = (PTS - userNew);
+
+            // PAS: punteggio corrente su Jira al momento del save
+            const { pas: PAS } = await fetchPAS(it.key);
+
+            // Condizione OBT: obsolescenza se PTS ≠ PAS
+            const OBT = (PAS !== PTS);
+
+            // NP (Nuovo Punteggio) da inviare
+            let NP;
+            if (!OBT) {
+                // nessuna obsolescenza: usa il valore indicato dall'utente
+                NP = userNew;
+            } else {
+                // obsolescenza: applica la stessa differenza "lova" al valore PAS
+                NP = clampHalfValue(PAS - lova);
+            }
+
+            // Aggiorna su Jira
+            await updateStoryPoints(it.key, NP);
+
+            // Aggiorna il MODEL e la UI:
+            // - sp diventa NP (è ciò che abbiamo appena scritto su Jira)
+            // - newSp lo allineiamo a NP (così il campo mostra NP)
+            // - dirty false
+            // - pts viene aggiornato al PAS (baseline "allo start" del prossimo giro logico)
+            it.sp = NP;
+            it.newSp = NP;
             it.dirty = false;
+            it.pts = PAS;  // memorizziamo il PTS originario del giro (ora è PAS)
         }
 
         if (dirty.length > 0) {
@@ -293,7 +380,7 @@ async function doSave(exitAfter) {
         return false;
     } finally {
         SAVING = false;
-        if (!exitAfter) setTimeout(() => setStatus(''), 4000);
+        // lo status sarà rimpiazzato dal prossimo init() in caso di SAVE semplice
     }
 }
 
@@ -310,16 +397,40 @@ async function init() {
         const spName = (FIELD_CACHE && FIELD_CACHE.spFieldName) ? FIELD_CACHE.spFieldName : spId;
         setStatus(`Carregando issues da sprint atual... [SP: ${spName} (${spId})]`);
 
+        // Fetch principale + speciale in parallelo
         const [mainIssues, specialIssues] = await Promise.all([
             fetchCurrentSprintIssues(),
             fetchSpecialSprintIssues()
         ]);
 
+        // === Forzatura: importa SEMPRE la issue FGC-9683 ===
+        let forcedIssue = null;
+        try {
+            forcedIssue = await fetchIssueByKey("FGC-9683");
+        } catch (e) {
+            console.warn("[point_down] Não foi possível importar diretamente FGC-9683:", e?.message || e);
+        }
+
         const mainKeys = new Set(mainIssues.map(i => i.key));
+        const specialKeys = new Set(specialIssues.map(i => i.key));
+
+        // Deduplica special vs main
         const specialsDedup = specialIssues.filter(i => !mainKeys.has(i.key));
 
-        MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false }));
-        MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, _special: true }));
+        // pts = fotografia PTS allo start (per il calcolo di lova/OBT durante il save)
+        MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, pts: x.sp }));
+        MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, _special: true, pts: x.sp }));
+
+        // Inserisce la FGC-9683 se non già presente in nessuna lista
+        if (forcedIssue) {
+            const exists = mainKeys.has(forcedIssue.key) || specialKeys.has(forcedIssue.key);
+            if (!exists) {
+                MODEL_MAIN.unshift({ ...forcedIssue, _baseUrl: baseUrl, dirty: false, pts: forcedIssue.sp, _forced: true });
+                console.log("[point_down] FGC-9683 importata diretamente e aggiunta al modello principale.");
+            } else {
+                console.log("[point_down] FGC-9683 já presente per criteri esistenti.");
+            }
+        }
 
         clearTimeout(watchdog);
 

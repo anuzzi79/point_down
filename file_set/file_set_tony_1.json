@@ -1,0 +1,15 @@
+{
+  "base_dir": "C:/Users/Antonio Nuzzi/point_down",
+  "files": [
+    "background.js",
+    "find_sp_field.py",
+    "find_sp_field_result.json",
+    "jira.js",
+    "manifest.json",
+    "modal.css",
+    "modal.html",
+    "modal.js",
+    "options.html",
+    "options.js"
+  ]
+}
