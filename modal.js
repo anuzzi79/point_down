@@ -372,7 +372,7 @@ async function init() {
             fetchSpecialSprintIssues()
         ]);
 
-        // Opzione: forza l’import della card di test SOLO se abilitato in Options
+        // Opzione: forza l’import della card di test SOLO se abilitato in Options 
         let forcedIssue = null;
         if (forceTestCard) {
             try {
@@ -385,7 +385,7 @@ async function init() {
         const mainKeys = new Set(mainIssues.map(i => i.key));
         const specialsDedup = specialIssues.filter(i => !mainKeys.has(i.key));
 
-        // ⬅️ Alla ricarica, fotografiamo PTS = sp proveniente da Jira (nuova baseline)
+        // ⬅️ Alla ricarica, fotografiamo PTS = sp proveniente da Jira (nuova baseline )
         MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, pts: x.sp }));
         MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, _special: true, pts: x.sp }));
 
