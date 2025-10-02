@@ -237,7 +237,13 @@ exitBtn.addEventListener('click', () => {
     try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
     window.close();
 });
-saveBtn.addEventListener('click', async () => { await doSave(false); });
+
+// ⬅️ Dopo ogni SALVA, se resti nel modale, facciamo REFRESH per “fotografare” il nuovo PTS
+saveBtn.addEventListener('click', async () => {
+    const ok = await doSave(false);
+    if (ok) await init();  // ricarica lista → pts aggiornati da sorgente Jira
+});
+
 saveExitBtn.addEventListener('click', async () => {
     const ok = await doSave(true);
     if (ok) {
@@ -324,10 +330,11 @@ async function doSave(exitAfter) {
 
             await updateStoryPoints(it.key, NP);
 
+            // ⬅️ Nuova baseline immediata: PTS diventa NP (finché non arriva il refresh)
             it.sp = NP;
             it.newSp = NP;
             it.dirty = false;
-            it.pts = PAS;
+            it.pts = NP;   // prima mettevamo PAS; ora fissiamo la baseline al valore scritto
         }
 
         if (dirty.length > 0) {
@@ -343,6 +350,7 @@ async function doSave(exitAfter) {
         return false;
     } finally {
         SAVING = false;
+        // lo status potrà essere rimpiazzato dall’init() se resti nel modale
     }
 }
 
@@ -377,6 +385,7 @@ async function init() {
         const mainKeys = new Set(mainIssues.map(i => i.key));
         const specialsDedup = specialIssues.filter(i => !mainKeys.has(i.key));
 
+        // ⬅️ Alla ricarica, fotografiamo PTS = sp proveniente da Jira (nuova baseline)
         MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, pts: x.sp }));
         MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, _special: true, pts: x.sp }));
 
