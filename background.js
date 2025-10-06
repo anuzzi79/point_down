@@ -60,7 +60,7 @@ chrome.runtime.onStartup.addListener(() => scheduleDailyAlarm());
 
 // Re-programma quando cambia l'orario nelle Options
 chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "sync" && changes.alarmTime) scheduleDailyAlarm();
+    if (area === "sync" && (changes.alarmTime)) scheduleDailyAlarm();
 });
 
 // ====== Lampeggio icona ======
@@ -144,11 +144,25 @@ function stopBlinking() {
 // ====== Eventi che attivano il modal / blink ======
 
 // Al suono dell'allarme: apri modal e inizia lampeggio
-chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === ALARM_NAME) {
-        startBlinking();
-        openModalTab();
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name !== ALARM_NAME) return;
+
+    // Controllo weekend: se è sab/dom e l'opzione non è abilitata, non aprire automaticamente
+    try {
+        const { enableWeekend } = await chrome.storage.sync.get(["enableWeekend"]);
+        const d = new Date();
+        const day = d.getDay(); // 0=dom, 6=sab
+        const isWeekend = (day === 0 || day === 6);
+        if (isWeekend && enableWeekend === false) {
+            console.log("[point_down] Alarme ignorado (fim de semana e 'enableWeekend' desabilitado).");
+            return;
+        }
+    } catch (e) {
+        // in caso di errore storage, prosegui in modo permissivo
     }
+
+    startBlinking();
+    openModalTab();
 });
 
 // ⚠️ RIMOSSO: listener per chrome.commands (Ctrl+B) — non più supportato

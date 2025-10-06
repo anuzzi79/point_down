@@ -15,13 +15,26 @@ const jqlEl = document.getElementById('jql');
 const alarmEl = document.getElementById('alarmTime');
 const statusEl = document.getElementById('status');
 const forceTestCardEl = document.getElementById('forceTestCard');
+const enableQueueLockEl = document.getElementById('enableQueueLock');
+const enableWeekendEl = document.getElementById('enableWeekend');
+const advancedBtn = document.getElementById('advancedBtn');
+const advancedSection = document.getElementById('advancedSection');
+
+// Toggle sezione Avançadas (di default nascosta)
+advancedBtn.addEventListener('click', () => {
+    const visible = advancedSection.style.display === 'block';
+    advancedSection.style.display = visible ? 'none' : 'block';
+    advancedBtn.setAttribute('aria-expanded', String(!visible));
+});
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
     const baseUrl = (baseUrlEl.value || '').trim();
     const email = (emailEl.value || '').trim();
     const token = (tokenEl.value || '').trim();
     const jql = (jqlEl.value || '').trim();
-    const forceTestCard = !!forceTestCardEl.checked;
+    const forceTestCard = !!forceTestCardEl?.checked;
+    const enableQueueLock = !!enableQueueLockEl?.checked;
+    const enableWeekend = !!enableWeekendEl?.checked;
 
     // valida e normaliza alarmTime
     let alarmTime = (alarmEl.value || '').trim(); // "HH:MM"
@@ -30,7 +43,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
         alarmTime = undefined;
     }
 
-    await chrome.storage.sync.set({ baseUrl, email, token, jql, alarmTime, forceTestCard });
+    await chrome.storage.sync.set({ baseUrl, email, token, jql, alarmTime, forceTestCard, enableQueueLock, enableWeekend });
     statusEl.textContent = '✔️ Configurações salvas.';
     setTimeout(() => statusEl.textContent = '', 2500);
 });
@@ -53,8 +66,8 @@ document.getElementById('testBtn').addEventListener('click', async () => {
 });
 
 (async function init() {
-    const { baseUrl, email, token, jql, alarmTime, forceTestCard } =
-        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql", "alarmTime", "forceTestCard"]);
+    const { baseUrl, email, token, jql, alarmTime, forceTestCard, enableQueueLock, enableWeekend } =
+        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql", "alarmTime", "forceTestCard", "enableQueueLock", "enableWeekend"]);
 
     if (baseUrl) baseUrlEl.value = baseUrl;
     if (email) emailEl.value = email;
@@ -68,10 +81,26 @@ document.getElementById('testBtn').addEventListener('click', async () => {
         alarmEl.value = "17:50";
     }
 
-    // forceTestCard default: true
+    // Opções avançadas: default = habilitadas
     if (typeof forceTestCard === 'boolean') {
         forceTestCardEl.checked = forceTestCard;
     } else {
         forceTestCardEl.checked = true;
     }
+
+    if (typeof enableQueueLock === 'boolean') {
+        enableQueueLockEl.checked = enableQueueLock;
+    } else {
+        enableQueueLockEl.checked = true;
+    }
+
+    if (typeof enableWeekend === 'boolean') {
+        enableWeekendEl.checked = enableWeekend;
+    } else {
+        enableWeekendEl.checked = true; // habilitada por padrão
+    }
+
+    // Avançadas rimane nascosta finché l’utente non clicca
+    advancedSection.style.display = 'none';
+    advancedBtn.setAttribute('aria-expanded', 'false');
 })();

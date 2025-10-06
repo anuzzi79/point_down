@@ -5,6 +5,14 @@ const SP_FIELD_NAME_FIXED = "Story Points (fixed)";    // etichetta informativa
 // URL fisso della board (Active sprints)
 const BOARD_URL_FIXED = "https://facilitygrid.atlassian.net/jira/software/c/projects/FGC/boards/34";
 
+// ======= Locking via Jira Issue Properties (bulk + filter) =======
+const PD_LOCK_KEY = "point_down_lock";
+const PD_LOCK_TTL_MS = 60_000;        // lock dura 60s (auto-expira)
+const PD_LOCK_WAIT_TOTAL_MS = 30_000; // attesa massima in coda
+const PD_LOCK_POLL_MS = 900;          // backoff base tra tentativi
+const PD_TASK_POLL_MS = 800;          // polling stato task di bulk op
+const PD_TASK_POLL_MAX = 20;          // max tentativi polling task
+
 // ======= Helpers base =======
 function setStatus(msg) {
     const el = document.getElementById('status');
@@ -57,16 +65,16 @@ async function fetchWithTimeout(url, opts = {}, ms = 20000) {
     }
 }
 
-// Estesa per includere anche forceTestCard dalle Options
+// Estesa per includere anche forceTestCard ed enableQueueLock dalle Options
 async function getAuth() {
-    const { baseUrl, email, token, jql, forceTestCard } =
-        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql", "forceTestCard"]);
+    const { baseUrl, email, token, jql, forceTestCard, enableQueueLock } =
+        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql", "forceTestCard", "enableQueueLock"]);
     if (!baseUrl || !email || !token) {
         throw new Error("Credenciais Jira não configuradas. Abra 'opções' e preencha Base URL, Email e Token.");
     }
-    // forceTestCard: default true se non presente
     const _forceTestCard = (typeof forceTestCard === 'boolean') ? forceTestCard : true;
-    return { baseUrl, email, token, jql, forceTestCard: _forceTestCard };
+    const _enableQueueLock = (typeof enableQueueLock === 'boolean') ? enableQueueLock : true; // default ON
+    return { baseUrl, email, token, jql, forceTestCard: _forceTestCard, enableQueueLock: _enableQueueLock };
 }
 
 // ======= JQL helper: forza status IN ("In Progress","Blocked","Need Reqs","Done") =======
@@ -156,10 +164,11 @@ async function fetchIssuesByJql(finalJql, spFieldId) {
         key: it.key,
         summary: it.fields.summary,
         sp: it.fields[spFieldId] ?? 0,
+        _id: it.id // teniamo anche l'ID numerico per i lock
     })).sort((a, b) => (b.sp || 0) - (a.sp || 0));
 }
 
-// JQL padrão (assignee = currentUser) — já respeita custom JQL salvo nas opções
+// JQL padrão (assignee = currentUser) — già respeita custom JQL salvo nas opções
 async function fetchCurrentSprintIssues() {
     const { jql } = await getAuth();
     const base = (jql && jql.trim())
@@ -196,7 +205,8 @@ async function fetchIssueByKey(issueKey) {
     return {
         key: data.key,
         summary: data.fields?.summary || "(sem resumo)",
-        sp: data.fields?.[spFieldId] ?? 0
+        sp: data.fields?.[spFieldId] ?? 0,
+        _id: data.id
     };
 }
 
@@ -214,6 +224,155 @@ async function updateStoryPoints(issueKey, newValue) {
         const t = await r.text().catch(() => "");
         throw new Error(`Falha ao salvar SP em ${issueKey}: ` + (t || r.status));
     }
+    return true;
+}
+
+// ======= Lock helpers =======
+function nowIsoPlus(ms) {
+    return new Date(Date.now() + ms).toISOString();
+}
+function randNonce() {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+async function pollTask(locationUrl, { email, token }) {
+    for (let i = 0; i < PD_TASK_POLL_MAX; i++) {
+        await new Promise(r => setTimeout(r, PD_TASK_POLL_MS));
+        const rr = await fetchWithTimeout(locationUrl, { headers: { "Authorization": `Basic ${b64(`${email}:${token}`)}`, "Accept": "application/json" } }, 20000);
+        if (!rr.ok) continue;
+        const task = await rr.json().catch(() => null);
+        // le pagine Atlassian mostrano "COMPLETE"/"IN_PROGRESS"/"FAILED" nei task
+        const st = (task && (task.status || task.state || task.currentStatus || task.elementType)) || "";
+        if (/COMPLETE|SUCCESS/i.test(st)) return true;
+        if (/FAILED|ERROR/i.test(st)) return false;
+    }
+    return false; // timeout polling
+}
+
+async function bulkSetPropertyFiltered(propKey, body) {
+    const { baseUrl, email, token } = await getAuth();
+    const url = `${baseUrl}/rest/api/3/issue/properties/${encodeURIComponent(propKey)}`;
+    const r = await fetchWithTimeout(url, {
+        method: "PUT",
+        headers: headers(email, token),
+        body: JSON.stringify(body)
+    }, 20000);
+    if (!(r.status === 303 || r.status === 202 || r.status === 200)) {
+        const t = await r.text().catch(() => "");
+        throw new Error(`Falha ao iniciar bulk property update: ${t || r.status}`);
+    }
+    // segue il location per stato task
+    const loc = r.headers.get("location");
+    if (!loc) {
+        // alcuni ambienti possono rispondere 200/202 senza location; assumiamo OK
+        return true;
+    }
+    return pollTask(loc, { email, token });
+}
+
+async function bulkDeletePropertyFiltered(propKey, body) {
+    const { baseUrl, email, token } = await getAuth();
+    const url = `${baseUrl}/rest/api/3/issue/properties/${encodeURIComponent(propKey)}`;
+    const r = await fetchWithTimeout(url, {
+        method: "DELETE",
+        headers: headers(email, token),
+        body: JSON.stringify(body)
+    }, 20000);
+    if (!(r.status === 303 || r.status === 202 || r.status === 200 || r.status === 204)) {
+        const t = await r.text().catch(() => "");
+        throw new Error(`Falha ao iniciar bulk property delete: ${t || r.status}`);
+    }
+    const loc = r.headers.get("location");
+    if (!loc) return true;
+    return pollTask(loc, { email, token });
+}
+
+async function getIssueProperty(issueKey, propKey) {
+    const { baseUrl, email, token } = await getAuth();
+    const r = await fetchWithTimeout(`${baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}/properties/${encodeURIComponent(propKey)}`, {
+        headers: headers(email, token)
+    }, 15000);
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`Erro ao ler property: ${r.status}`);
+    const data = await r.json().catch(() => null);
+    return data?.value ?? null;
+}
+
+/**
+ * Acquisisce lock cooperativo su una issue:
+ *  1) tenta set property con filtro hasProperty=false (CAS create)
+ *  2) se già presente:
+ *      - se expired → takeover con filtro currentValue=oldLock
+ *      - altrimenti attende e ritenta fino a timeout
+ */
+async function acquireLockOrWait(issue) {
+    const { email, enableQueueLock } = await getAuth();
+    if (!enableQueueLock) return null; // locking disattivato via options
+
+    const entityId = Number(issue._id);
+    if (!entityId || !Number.isFinite(entityId)) {
+        throw new Error(`ID numerico dell'issue non disponibile per il lock (${issue.key}). Abra o modal novamente.`);
+    }
+
+    const myLock = {
+        owner: email,
+        nonce: randNonce(),
+        expiresAt: nowIsoPlus(PD_LOCK_TTL_MS)
+    };
+
+    const startedAt = Date.now();
+    let attempt = 0;
+
+    while (Date.now() - startedAt < PD_LOCK_WAIT_TOTAL_MS) {
+        attempt++;
+
+        // 1) tentativo CAS: crea lock solo se non esiste
+        const okCreate = await bulkSetPropertyFiltered(PD_LOCK_KEY, {
+            filter: { entityIds: [entityId], hasProperty: false },
+            value: myLock
+        });
+        if (okCreate) {
+            // conferma di possesso (verifica)
+            const v = await getIssueProperty(issue.key, PD_LOCK_KEY).catch(() => null);
+            if (v && v.nonce === myLock.nonce) return myLock; // lock acquisito
+        }
+
+        // 2) c'è un lock: controlliamo se scaduto
+        const existing = await getIssueProperty(issue.key, PD_LOCK_KEY).catch(() => null);
+        const exp = existing?.expiresAt && Date.parse(existing.expiresAt);
+        const isExpired = !exp || (Date.now() > exp);
+
+        if (existing && isExpired) {
+            // CAS takeover: sostituisci solo se currentValue == existing
+            const takeover = await bulkSetPropertyFiltered(PD_LOCK_KEY, {
+                filter: { entityIds: [entityId], hasProperty: true, currentValue: existing },
+                value: myLock
+            });
+            if (takeover) {
+                const v2 = await getIssueProperty(issue.key, PD_LOCK_KEY).catch(() => null);
+                if (v2 && v2.nonce === myLock.nonce) return myLock;
+            }
+        }
+
+        // 3) attesa ritentando (backoff con jitter)
+        const sleepMs = PD_LOCK_POLL_MS + Math.floor(Math.random() * 400);
+        setStatus(`Aguardando fila em ${issue.key}… (tentativa ${attempt})`);
+        await new Promise(r => setTimeout(r, sleepMs));
+    }
+
+    throw new Error(`Timeout aguardando fila para ${issue.key}. Tente novamente.`);
+}
+
+async function releaseLock(issue, myLock) {
+    const { enableQueueLock } = await getAuth();
+    if (!enableQueueLock || !myLock) return true;
+    const entityId = Number(issue._id);
+    if (!entityId) return true;
+
+    // elimina lock solo se il valore corrente combacia col mio (evita race)
+    await bulkDeletePropertyFiltered(PD_LOCK_KEY, {
+        entityIds: [entityId],
+        currentValue: myLock
+    }).catch(() => { });
     return true;
 }
 
@@ -310,16 +469,18 @@ async function doSave(exitAfter) {
             const userNew = (typeof it.newSp === 'number') ? it.newSp : it.sp;
             const lova = (PTS - userNew);
 
-            const { pas: PAS } = await (async () => {
+            // ricalcola PAS dal server prima del write
+            const { pas: PAS, idNum } = await (async () => {
                 const { baseUrl, email, token } = await getAuth();
                 const spFieldId = await resolveStoryPointsFieldId();
                 const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(it.key)}?fields=${encodeURIComponent(spFieldId)}`;
                 const r = await fetchWithTimeout(url, { headers: headers(email, token) }, 15000);
                 if (!r.ok) throw new Error(`Falha ao obter valor atual no Jira (${it.key})`);
                 const data = await r.json();
-                return { pas: data?.fields?.[spFieldId] ?? 0 };
+                return { pas: data?.fields?.[spFieldId] ?? 0, idNum: Number(data?.id) || Number(it._id) || null };
             })();
 
+            // prepara baseline/O.B.T.
             const OBT = (PAS !== PTS);
             let NP;
             if (!OBT) {
@@ -328,13 +489,30 @@ async function doSave(exitAfter) {
                 NP = Math.max(0, Math.round(((PAS - lova) || 0) * 2) / 2);
             }
 
-            await updateStoryPoints(it.key, NP);
+            // === Corridoio di attesa: ACQUIRE LOCK (se abilitato) ===
+            // assicuriamo che l'oggetto it abbia _id per la property bulk
+            if (!it._id && idNum) it._id = idNum;
+            let myLock = null;
+            try {
+                myLock = await acquireLockOrWait(it);
+            } catch (lockErr) {
+                console.warn(`[point_down] lock failure on ${it.key}:`, lockErr?.message || lockErr);
+                setStatus(`❌ Não foi possível obter fila para ${it.key}. Pulando…`);
+                continue; // salta questa issue mantenendo le altre
+            }
 
-            // ⬅️ Nuova baseline immediata: PTS diventa NP (finché non arriva il refresh)
-            it.sp = NP;
-            it.newSp = NP;
-            it.dirty = false;
-            it.pts = NP;   // prima mettevamo PAS; ora fissiamo la baseline al valore scritto
+            try {
+                await updateStoryPoints(it.key, NP);
+
+                // ⬅️ Nuova baseline immediata: PTS diventa NP (finché non arriva il refresh)
+                it.sp = NP;
+                it.newSp = NP;
+                it.dirty = false;
+                it.pts = NP;   // baseline al valore scritto
+            } finally {
+                // === RILASCIA LOCK ===
+                try { await releaseLock(it, myLock); } catch { /* no-op */ }
+            }
         }
 
         if (dirty.length > 0) {

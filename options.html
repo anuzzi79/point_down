@@ -27,10 +27,33 @@
         .row {
             display: flex;
             gap: 12px;
+            /* allinea in alto i due blocchi (Email / API Token) */
+            align-items: flex-start;
         }
 
         .row>div {
             flex: 1;
+        }
+
+        /* --- Colonna del token con icona in assoluto a destra --- */
+        .token-col {
+            position: relative;
+            /* l'icona “i” viene posizionata in assoluto dentro questo contenitore */
+        }
+
+        .info-link {
+            position: absolute;
+            right: 0;
+            top: 6px;
+            /* allineata alla baseline della label */
+            line-height: 0;
+        }
+
+        .info-icon {
+            width: 20px;
+            height: 20px;
+            display: block;
+            cursor: pointer;
         }
 
         button {
@@ -53,6 +76,19 @@
             color: #555;
             font-size: 13px;
         }
+
+        /* sezione avanzate collassabile */
+        #advancedSection {
+            display: none;
+            /* nascosta finché l’utente non clicca */
+        }
+
+        .buttons {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-top: 12px;
+        }
     </style>
 </head>
 
@@ -67,8 +103,14 @@
             <label>Email</label>
             <input id="email" type="text" placeholder="nome@empresa.com" />
         </div>
-        <div>
+
+        <div class="token-col">
             <label>API Token</label>
+            <!-- Icona informativa ancorata a destra, non influisce sul flusso -->
+            <a class="info-link" href="https://youtu.be/X1F5LfCuq6I" target="_blank" rel="noopener noreferrer"
+                title="Guarda il video di aiuto">
+                <img class="info-icon" src="icons/info.png" alt="Info" />
+            </a>
             <input id="token" type="password" placeholder="Jira API Token" />
         </div>
     </div>
@@ -79,26 +121,45 @@
 
     <hr />
 
-    <h2>Preferências</h2>
-    <label>
-        <input type="checkbox" id="forceTestCard" />
-        <span>Sim, quero que apareça a card de teste! (FGC-9683)</span>
-    </label>
-    <small class="hint">Quando marcado, o Point Down sempre adiciona a card de teste FGC-9683 à lista, mesmo que o seu
-        JQL não a traga.</small>
-
-    <hr />
-
     <h2>Agendamento do modal</h2>
     <label>Hora diária para abrir automaticamente o modal</label>
     <input id="alarmTime" type="time" step="60" />
     <small class="hint">Ex.: 17:50. O modal será aberto automaticamente todos os dias nesse horário (hora
         local).</small>
 
-    <div style="margin-top:16px">
+    <div class="buttons">
         <button id="saveBtn">Salvar</button>
         <button id="testBtn">Testar conexão</button>
+        <button id="advancedBtn" aria-expanded="false">Avançadas</button>
         <span id="status"></span>
+    </div>
+
+    <!-- Sezione AVANZATE (collassabile) -->
+    <div id="advancedSection">
+        <hr />
+        <h2>Preferências</h2>
+
+        <label>
+            <input type="checkbox" id="forceTestCard" />
+            <span>Sim, quero que apareça a card de teste! (FGC-9683)</span>
+        </label>
+        <small class="hint">Quando marcado, o Point Down sempre adiciona a card de teste FGC-9683 à lista, mesmo que o
+            seu
+            JQL não a traga.</small>
+
+        <label style="margin-top:12px;">
+            <input type="checkbox" id="enableQueueLock" />
+            <span>Ativar fila/lock cooperativo (anti-concorrência) via Issue Property</span>
+        </label>
+        <small class="hint">Quando habilitado (recomendado), cada gravação de SP usa um lock atômico em Jira para evitar
+            colisões entre usuários.</small>
+
+        <label style="margin-top:12px;">
+            <input type="checkbox" id="enableWeekend" />
+            <span>Ativar as notificações também sábado e domingo por finalidade de test</span>
+        </label>
+        <small class="hint">Quando desabilitado, a abertura automática não acontece nos fins de semana.
+            Abertura manual continua possível em qualquer dia.</small>
     </div>
 
     <script type="module" src="options.js"></script>
