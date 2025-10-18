@@ -196,13 +196,44 @@ async function fetchCurrentSprintIssues() {
     return fetchIssuesByJql(finalJql, spFieldId);
 }
 
-// JQL especial (explorat*/regres*)
+/* -----------------------------------------------------------------------
+   SPECIAL: Exploratory / Regression cards (independent of assignee)
+   - broader matching with prefix support (explor*, regres*, regression)
+   - search in summary AND description
+   - **APPLIES the same status filters from Options**
+----------------------------------------------------------------------- */
+const SPECIAL_TERMS = [
+    "explor",        // covers exploratory, explorar, exploration
+    "explorat",      // explicit prefix for 'exploratory'
+    "regres",        // covers regress, regression
+    "regress",
+    "regression",
+    "exploratory"
+];
+
+function buildSpecialClause() {
+    // Build OR of (summary ~ "term" OR summary ~ "term*" OR description ~ "term" OR description ~ "term*")
+    const parts = [];
+    for (const t of SPECIAL_TERMS) {
+        const term = t.replace(/"/g, '\\"');
+        parts.push(
+            `(summary ~ "${term}" OR summary ~ "${term}*" OR description ~ "${term}" OR description ~ "${term}*")`
+        );
+    }
+    return parts.join(" OR ");
+}
+
+// JQL especial (explorat*/regres*) — sem assignee, **com filtros de status das opções**
 async function fetchSpecialSprintIssues() {
     const { statusFilters } = await getAuth();
-    const specialBase =
-        'sprint in openSprints() AND (summary ~ "explorat" OR summary ~ "regres" OR summary ~ "regress")';
-    const specialJql = jqlWithDynamicStatuses(specialBase, statusFilters);
     const spFieldId = await resolveStoryPointsFieldId();
+
+    const clause = buildSpecialClause();
+    const baseJql = `sprint in openSprints() AND (${clause})`;
+
+    // ⬇️ Applica le stesse regole di filtro di status della lista principale
+    const specialJql = jqlWithDynamicStatuses(baseJql, statusFilters);
+
     return fetchIssuesByJql(specialJql, spFieldId);
 }
 
