@@ -27,7 +27,6 @@
         .row {
             display: flex;
             gap: 12px;
-            /* allinea in alto i due blocchi (Email / API Token) */
             align-items: flex-start;
         }
 
@@ -35,17 +34,14 @@
             flex: 1;
         }
 
-        /* --- Colonna del token con icona in assoluto a destra --- */
         .token-col {
             position: relative;
-            /* l'icona “i” viene posizionata in assoluto dentro questo contenitore */
         }
 
         .info-link {
             position: absolute;
             right: 0;
             top: 6px;
-            /* allineata alla baseline della label */
             line-height: 0;
         }
 
@@ -77,10 +73,9 @@
             font-size: 13px;
         }
 
-        /* sezione avanzate collassabile */
+        /* sezione avancadas collassabile */
         #advancedSection {
-            display: none;
-            /* nascosta finché l’utente non clicca */
+            display: none; /* nascosta finché non si clicca */
         }
 
         .buttons {
@@ -88,6 +83,30 @@
             gap: 12px;
             align-items: center;
             margin-top: 12px;
+        }
+
+        fieldset {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+        }
+
+        fieldset legend {
+            padding: 0 6px;
+            font-weight: 600;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(160px, 1fr));
+            gap: 8px 16px;
+            align-items: center;
+        }
+
+        .status-grid label {
+            margin: 0;
+            font-weight: 500;
         }
     </style>
 </head>
@@ -127,12 +146,7 @@
     <small class="hint">Ex.: 17:50. O modal será aberto automaticamente todos os dias nesse horário (hora
         local).</small>
 
-    <div class="buttons">
-        <button id="saveBtn">Salvar</button>
-        <button id="testBtn">Testar conexão</button>
-        <button id="advancedBtn" aria-expanded="false">Avançadas</button>
-        <span id="status"></span>
-    </div>
+    <!-- 🔻 PRIMA era qui il blocco bottoni; lo spostiamo sotto la sezione Avançadas -->
 
     <!-- Sezione AVANZATE (collassabile) -->
     <div id="advancedSection">
@@ -144,8 +158,7 @@
             <span>Sim, quero que apareça a card de teste! (FGC-9683)</span>
         </label>
         <small class="hint">Quando marcado, o Point Down sempre adiciona a card de teste FGC-9683 à lista, mesmo que o
-            seu
-            JQL não a traga.</small>
+            seu JQL não a traga.</small>
 
         <label style="margin-top:12px;">
             <input type="checkbox" id="enableQueueLock" />
@@ -160,6 +173,27 @@
         </label>
         <small class="hint">Quando desabilitado, a abertura automática não acontece nos fins de semana.
             Abertura manual continua possível em qualquer dia.</small>
+
+        <fieldset id="statusFiltersBox" style="margin-top:16px;">
+            <legend>Filtros de Status (lista principal)</legend>
+            <div class="status-grid">
+                <label><input type="checkbox" id="st_todo" /> To Do</label>
+                <label><input type="checkbox" id="st_inprogress" /> In Progress</label>
+                <label><input type="checkbox" id="st_blocked" /> Blocked</label>
+                <label><input type="checkbox" id="st_needreqs" /> Need Reqs</label>
+                <label><input type="checkbox" id="st_done" /> Done</label>
+            </div>
+            <small class="hint">As seleções acima sempre se somam ao seu JQL. Se nenhum status for selecionado, nenhuma
+                card será retornada.</small>
+        </fieldset>
+    </div>
+
+    <!-- 🔻 Bottoni ora restano SEMPRE in fondo (sotto Avançadas) -->
+    <div class="buttons">
+        <button id="saveBtn">Salvar</button>
+        <button id="testBtn">Testar conexão</button>
+        <button id="advancedBtn" aria-expanded="false">Avançadas</button>
+        <span id="status"></span>
     </div>
 
     <script type="module" src="options.js"></script>

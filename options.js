@@ -8,6 +8,15 @@ async function testAuthStandalone({ baseUrl, email, token }) {
     return r.ok;
 }
 
+// === Default dinâmico para filtros de status ===
+const DEFAULT_STATUS_FILTERS = {
+    "To Do": false,
+    "In Progress": true,
+    "Blocked": true,
+    "Need Reqs": true,
+    "Done": false,
+};
+
 const baseUrlEl = document.getElementById('baseUrl');
 const emailEl = document.getElementById('email');
 const tokenEl = document.getElementById('token');
@@ -19,6 +28,13 @@ const enableQueueLockEl = document.getElementById('enableQueueLock');
 const enableWeekendEl = document.getElementById('enableWeekend');
 const advancedBtn = document.getElementById('advancedBtn');
 const advancedSection = document.getElementById('advancedSection');
+
+// Checkboxes de Status
+const stTodoEl = document.getElementById('st_todo');
+const stInProgressEl = document.getElementById('st_inprogress');
+const stBlockedEl = document.getElementById('st_blocked');
+const stNeedReqsEl = document.getElementById('st_needreqs');
+const stDoneEl = document.getElementById('st_done');
 
 // Toggle sezione Avançadas (di default nascosta)
 advancedBtn.addEventListener('click', () => {
@@ -36,14 +52,27 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     const enableQueueLock = !!enableQueueLockEl?.checked;
     const enableWeekend = !!enableWeekendEl?.checked;
 
+    // monta objeto de filtros de status a partir das checkboxes
+    const statusFilters = {
+        "To Do": !!stTodoEl?.checked,
+        "In Progress": !!stInProgressEl?.checked,
+        "Blocked": !!stBlockedEl?.checked,
+        "Need Reqs": !!stNeedReqsEl?.checked,
+        "Done": !!stDoneEl?.checked,
+    };
+
     // valida e normaliza alarmTime
     let alarmTime = (alarmEl.value || '').trim(); // "HH:MM"
     if (!/^\d{2}:\d{2}$/.test(alarmTime)) {
-        // se vazio/inválido, deixa undefined para cair no default (17:50)
-        alarmTime = undefined;
+        alarmTime = undefined; // cai no default background (17:50)
     }
 
-    await chrome.storage.sync.set({ baseUrl, email, token, jql, alarmTime, forceTestCard, enableQueueLock, enableWeekend });
+    await chrome.storage.sync.set({
+        baseUrl, email, token, jql, alarmTime,
+        forceTestCard, enableQueueLock, enableWeekend,
+        statusFilters
+    });
+
     statusEl.textContent = '✔️ Configurações salvas.';
     setTimeout(() => statusEl.textContent = '', 2500);
 });
@@ -65,9 +94,26 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     }
 });
 
+(function applyStatusToUI(statusFilters) {
+    // aplica valores nas checkboxes (helper)
+    const src = statusFilters || DEFAULT_STATUS_FILTERS;
+    stTodoEl.checked = !!src["To Do"];
+    stInProgressEl.checked = !!src["In Progress"];
+    stBlockedEl.checked = !!src["Blocked"];
+    stNeedReqsEl.checked = !!src["Need Reqs"];
+    stDoneEl.checked = !!src["Done"];
+})();
+
 (async function init() {
-    const { baseUrl, email, token, jql, alarmTime, forceTestCard, enableQueueLock, enableWeekend } =
-        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql", "alarmTime", "forceTestCard", "enableQueueLock", "enableWeekend"]);
+    const {
+        baseUrl, email, token, jql, alarmTime,
+        forceTestCard, enableQueueLock, enableWeekend,
+        statusFilters
+    } = await chrome.storage.sync.get([
+        "baseUrl", "email", "token", "jql", "alarmTime",
+        "forceTestCard", "enableQueueLock", "enableWeekend",
+        "statusFilters"
+    ]);
 
     if (baseUrl) baseUrlEl.value = baseUrl;
     if (email) emailEl.value = email;
@@ -82,25 +128,23 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     }
 
     // Opções avançadas: default = habilitadas
-    if (typeof forceTestCard === 'boolean') {
-        forceTestCardEl.checked = forceTestCard;
-    } else {
-        forceTestCardEl.checked = true;
-    }
+    forceTestCardEl.checked = (typeof forceTestCard === 'boolean') ? forceTestCard : true;
+    enableQueueLockEl.checked = (typeof enableQueueLock === 'boolean') ? enableQueueLock : true;
+    enableWeekendEl.checked = (typeof enableWeekend === 'boolean') ? enableWeekend : true;
 
-    if (typeof enableQueueLock === 'boolean') {
-        enableQueueLockEl.checked = enableQueueLock;
-    } else {
-        enableQueueLockEl.checked = true;
-    }
+    // Status filters (aplica defaults se não existir no storage)
+    (function applyStatusToUI(statusFilters) {
+        const src = statusFilters && typeof statusFilters === 'object'
+            ? statusFilters
+            : DEFAULT_STATUS_FILTERS;
+        stTodoEl.checked = !!src["To Do"];
+        stInProgressEl.checked = !!src["In Progress"];
+        stBlockedEl.checked = !!src["Blocked"];
+        stNeedReqsEl.checked = !!src["Need Reqs"];
+        stDoneEl.checked = !!src["Done"];
+    })(statusFilters);
 
-    if (typeof enableWeekend === 'boolean') {
-        enableWeekendEl.checked = enableWeekend;
-    } else {
-        enableWeekendEl.checked = true; // habilitada por padrão
-    }
-
-    // Avançadas rimane nascosta finché l’utente non clicca
+    // Avançadas permanece oculta até clique
     advancedSection.style.display = 'none';
     advancedBtn.setAttribute('aria-expanded', 'false');
 })();

@@ -7,11 +7,20 @@ const BOARD_URL_FIXED = "https://facilitygrid.atlassian.net/jira/software/c/proj
 
 // ======= Locking via Jira Issue Properties (bulk + filter) =======
 const PD_LOCK_KEY = "point_down_lock";
-const PD_LOCK_TTL_MS = 60_000;        // lock dura 60s (auto-expira)
-const PD_LOCK_WAIT_TOTAL_MS = 30_000; // attesa massima in coda
-const PD_LOCK_POLL_MS = 900;          // backoff base tra tentativi
-const PD_TASK_POLL_MS = 800;          // polling stato task di bulk op
-const PD_TASK_POLL_MAX = 20;          // max tentativi polling task
+const PD_LOCK_TTL_MS = 60_000;
+const PD_LOCK_WAIT_TOTAL_MS = 30_000;
+const PD_LOCK_POLL_MS = 900;
+const PD_TASK_POLL_MS = 800;
+const PD_TASK_POLL_MAX = 20;
+
+// === Default dinâmico para filtros de status (usado se storage não tiver valor) ===
+const DEFAULT_STATUS_FILTERS = {
+    "To Do": false,
+    "In Progress": true,
+    "Blocked": true,
+    "Need Reqs": true,
+    "Done": false,
+};
 
 // ======= Helpers base =======
 function setStatus(msg) {
@@ -20,7 +29,6 @@ function setStatus(msg) {
     console.log('[point_down]', msg);
 }
 
-// Mostra due link separati nello status: "Go to Sprint!" e "Board"
 function setStatusTwoLinks(sprintLabel, sprintHref, boardLabel, boardHref) {
     const el = document.getElementById('status');
     if (!el) return;
@@ -65,35 +73,63 @@ async function fetchWithTimeout(url, opts = {}, ms = 20000) {
     }
 }
 
-// Estesa per includere anche forceTestCard ed enableQueueLock dalle Options
+// Estesa per includere também statusFilters dalle Opções
 async function getAuth() {
-    const { baseUrl, email, token, jql, forceTestCard, enableQueueLock } =
-        await chrome.storage.sync.get(["baseUrl", "email", "token", "jql", "forceTestCard", "enableQueueLock"]);
+    const {
+        baseUrl, email, token, jql, forceTestCard, enableQueueLock, statusFilters
+    } = await chrome.storage.sync.get([
+        "baseUrl", "email", "token", "jql", "forceTestCard", "enableQueueLock", "statusFilters"
+    ]);
+
     if (!baseUrl || !email || !token) {
         throw new Error("Credenciais Jira não configuradas. Abra 'opções' e preencha Base URL, Email e Token.");
     }
     const _forceTestCard = (typeof forceTestCard === 'boolean') ? forceTestCard : true;
-    const _enableQueueLock = (typeof enableQueueLock === 'boolean') ? enableQueueLock : true; // default ON
-    return { baseUrl, email, token, jql, forceTestCard: _forceTestCard, enableQueueLock: _enableQueueLock };
+    const _enableQueueLock = (typeof enableQueueLock === 'boolean') ? enableQueueLock : true;
+
+    // aplica defaults se não houver nada salvo
+    const _statusFilters = (statusFilters && typeof statusFilters === 'object')
+        ? statusFilters
+        : DEFAULT_STATUS_FILTERS;
+
+    return {
+        baseUrl, email, token, jql,
+        forceTestCard: _forceTestCard,
+        enableQueueLock: _enableQueueLock,
+        statusFilters: _statusFilters
+    };
 }
 
-// ======= JQL helper: forza status IN ("In Progress","Blocked","Need Reqs","Done") =======
-function jqlWithInProgress(baseJql) {
+// ======= JQL helper: monta cláusula de status a partir das opções =======
+function buildStatusClauseFromOptions(statusFilters) {
+    // coleta status marcados
+    const enabled = Object.entries(statusFilters || {})
+        .filter(([, v]) => !!v)
+        .map(([k]) => k)
+        .filter(Boolean);
+
+    if (enabled.length === 0) {
+        // Nenhum status selecionado → retorna filtro que não encontra nada, mas é válido
+        return "(status IS EMPTY)";
+    }
+    const quoted = enabled.map(s => `"${s.replace(/"/g, '\\"')}"`).join(", ");
+    return `status IN (${quoted})`;
+}
+
+/**
+ * Combina JQL base (do usuário ou default) + cláusula de status dinâmica.
+ * A cláusula de status PREVALE sempre (é sempre somada).
+ */
+function jqlWithDynamicStatuses(baseJql, statusFilters) {
+    const statusClause = buildStatusClauseFromOptions(statusFilters);
     const trimmed = (baseJql || "").trim();
-    const STATUSES = ["In Progress", "Blocked", "Need Reqs", "Done"];
-    const clause = `status IN (${STATUSES.map(s => `"${s}"`).join(", ")})`;
-    if (!trimmed) return clause;
-    return `(${trimmed}) AND ${clause}`;
+    if (!trimmed) return statusClause;
+    return `(${trimmed}) AND ${statusClause}`;
 }
 
 // ======= Jira: field cache + resolve SP field =======
 let FIELD_CACHE = null;
 
-/**
- * Resolve o ID do campo de Story Points.
- * Prioriza o ID FIXO descoberto (customfield_10022) per garantire che
- * lemos/escrevemos exatamente o campo certo.
- */
 async function resolveStoryPointsFieldId() {
     if (FIELD_CACHE?.spFieldId) return FIELD_CACHE.spFieldId;
 
@@ -103,26 +139,8 @@ async function resolveStoryPointsFieldId() {
         return FIELD_CACHE.spFieldId;
     }
 
-    // (fallback non usato perché abbiamo il fisso)
-    const { baseUrl, email, token } = await getAuth();
-    const r = await fetchWithTimeout(`${baseUrl}/rest/api/3/field`, {
-        headers: headers(email, token)
-    });
-    if (!r.ok) {
-        const txt = await r.text().catch(() => "");
-        throw new Error("Falha ao buscar campos do Jira. " + (txt || r.status));
-    }
-    const fields = await r.json();
-    const candidates = ["Story Points", "Story Point Estimate", "Story point estimate", "Story points", "Story Point"];
-    let match = null;
-    for (const f of fields) {
-        const name = (f.name || "").toLowerCase();
-        if (candidates.some(c => name === c.toLowerCase())) { match = f; break; }
-    }
-    if (!match) throw new Error("Campo de Story Points não encontrado por nome. Ajuste o nome/ID.");
-    FIELD_CACHE = { spFieldId: match.id, spFieldName: match.name || match.id };
-    console.log('[point_down] Story Points field (resolved):', FIELD_CACHE.spFieldName, FIELD_CACHE.spFieldId);
-    return match.id;
+    // (fallback não usado)
+    throw new Error("SP field fallback não suportado neste build.");
 }
 
 // ======= Jira: search helper via /search/jql (POST + nextPageToken) =======
@@ -159,38 +177,40 @@ async function fetchIssuesByJql(finalJql, spFieldId) {
         nextPageToken = data.nextPageToken;
     }
 
-    // ordinamento per punti residui (sp) decrescente
     return all.map(it => ({
         key: it.key,
         summary: it.fields.summary,
         sp: it.fields[spFieldId] ?? 0,
-        _id: it.id // teniamo anche l'ID numerico per i lock
+        _id: it.id
     })).sort((a, b) => (b.sp || 0) - (a.sp || 0));
 }
 
-// JQL padrão (assignee = currentUser) — già respeita custom JQL salvo nas opções
+// JQL padrão (assignee = currentUser); agora SEM 'statusCategory != Done' (filtro de status é dinâmico)
 async function fetchCurrentSprintIssues() {
-    const { jql } = await getAuth();
+    const { jql, statusFilters } = await getAuth();
+
+    // Base default enxuta: sprint aberto + assignee corrente
     const base = (jql && jql.trim())
         ? jql.trim()
-        : 'sprint in openSprints() AND assignee = currentUser() AND statusCategory != Done';
-    const finalJql = jqlWithInProgress(base);
+        : 'sprint in openSprints() AND assignee = currentUser()';
+
+    // Soma SEMPRE a cláusula dinâmica de status
+    const finalJql = jqlWithDynamicStatuses(base, statusFilters);
     const spFieldId = await resolveStoryPointsFieldId();
     return fetchIssuesByJql(finalJql, spFieldId);
 }
 
-// JQL especial: títulos contendo explorat* ou regres*/regress* (independente de assignee)
+// JQL especial (explorat*/regres*), também soma filtro dinâmico de status
 async function fetchSpecialSprintIssues() {
-    const spFieldId = await resolveStoryPointsFieldId();
+    const { statusFilters } = await getAuth();
     const specialBase =
         'sprint in openSprints() AND (summary ~ "explorat" OR summary ~ "regres" OR summary ~ "regress")';
-    const specialJql = jqlWithInProgress(specialBase);
+    const specialJql = jqlWithDynamicStatuses(specialBase, statusFilters);
+    const spFieldId = await resolveStoryPointsFieldId();
     return fetchIssuesByJql(specialJql, spFieldId);
 }
 
-/**
- * Fetch diretto per uma issue específica por chave
- */
+/** Fetch direto por chave (respeita apenas campo SP; status não é aplicado aqui por chave específica) */
 async function fetchIssueByKey(issueKey) {
     const { baseUrl, email, token } = await getAuth();
     const spFieldId = await resolveStoryPointsFieldId();
@@ -227,27 +247,21 @@ async function updateStoryPoints(issueKey, newValue) {
     return true;
 }
 
-// ======= Lock helpers =======
-function nowIsoPlus(ms) {
-    return new Date(Date.now() + ms).toISOString();
-}
-function randNonce() {
-    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
+// ======= Lock helpers (inalterati) =======
+function nowIsoPlus(ms) { return new Date(Date.now() + ms).toISOString(); }
+function randNonce() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; }
 async function pollTask(locationUrl, { email, token }) {
     for (let i = 0; i < PD_TASK_POLL_MAX; i++) {
         await new Promise(r => setTimeout(r, PD_TASK_POLL_MS));
         const rr = await fetchWithTimeout(locationUrl, { headers: { "Authorization": `Basic ${b64(`${email}:${token}`)}`, "Accept": "application/json" } }, 20000);
         if (!rr.ok) continue;
         const task = await rr.json().catch(() => null);
-        // le pagine Atlassian mostrano "COMPLETE"/"IN_PROGRESS"/"FAILED" nei task
         const st = (task && (task.status || task.state || task.currentStatus || task.elementType)) || "";
         if (/COMPLETE|SUCCESS/i.test(st)) return true;
         if (/FAILED|ERROR/i.test(st)) return false;
     }
-    return false; // timeout polling
+    return false;
 }
-
 async function bulkSetPropertyFiltered(propKey, body) {
     const { baseUrl, email, token } = await getAuth();
     const url = `${baseUrl}/rest/api/3/issue/properties/${encodeURIComponent(propKey)}`;
@@ -260,15 +274,10 @@ async function bulkSetPropertyFiltered(propKey, body) {
         const t = await r.text().catch(() => "");
         throw new Error(`Falha ao iniciar bulk property update: ${t || r.status}`);
     }
-    // segue il location per stato task
     const loc = r.headers.get("location");
-    if (!loc) {
-        // alcuni ambienti possono rispondere 200/202 senza location; assumiamo OK
-        return true;
-    }
+    if (!loc) return true;
     return pollTask(loc, { email, token });
 }
-
 async function bulkDeletePropertyFiltered(propKey, body) {
     const { baseUrl, email, token } = await getAuth();
     const url = `${baseUrl}/rest/api/3/issue/properties/${encodeURIComponent(propKey)}`;
@@ -285,7 +294,6 @@ async function bulkDeletePropertyFiltered(propKey, body) {
     if (!loc) return true;
     return pollTask(loc, { email, token });
 }
-
 async function getIssueProperty(issueKey, propKey) {
     const { baseUrl, email, token } = await getAuth();
     const r = await fetchWithTimeout(`${baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}/properties/${encodeURIComponent(propKey)}`, {
@@ -296,21 +304,13 @@ async function getIssueProperty(issueKey, propKey) {
     const data = await r.json().catch(() => null);
     return data?.value ?? null;
 }
-
-/**
- * Acquisisce lock cooperativo su una issue:
- *  1) tenta set property con filtro hasProperty=false (CAS create)
- *  2) se già presente:
- *      - se expired → takeover con filtro currentValue=oldLock
- *      - altrimenti attende e ritenta fino a timeout
- */
 async function acquireLockOrWait(issue) {
     const { email, enableQueueLock } = await getAuth();
-    if (!enableQueueLock) return null; // locking disattivato via options
+    if (!enableQueueLock) return null;
 
     const entityId = Number(issue._id);
     if (!entityId || !Number.isFinite(entityId)) {
-        throw new Error(`ID numerico dell'issue non disponibile per il lock (${issue.key}). Abra o modal novamente.`);
+        throw new Error(`ID numerico dell'issue non disponível para o lock (${issue.key}). Abra o modal novamente.`);
     }
 
     const myLock = {
@@ -325,24 +325,20 @@ async function acquireLockOrWait(issue) {
     while (Date.now() - startedAt < PD_LOCK_WAIT_TOTAL_MS) {
         attempt++;
 
-        // 1) tentativo CAS: crea lock solo se non esiste
         const okCreate = await bulkSetPropertyFiltered(PD_LOCK_KEY, {
             filter: { entityIds: [entityId], hasProperty: false },
             value: myLock
         });
         if (okCreate) {
-            // conferma di possesso (verifica)
             const v = await getIssueProperty(issue.key, PD_LOCK_KEY).catch(() => null);
-            if (v && v.nonce === myLock.nonce) return myLock; // lock acquisito
+            if (v && v.nonce === myLock.nonce) return myLock;
         }
 
-        // 2) c'è un lock: controlliamo se scaduto
         const existing = await getIssueProperty(issue.key, PD_LOCK_KEY).catch(() => null);
         const exp = existing?.expiresAt && Date.parse(existing.expiresAt);
         const isExpired = !exp || (Date.now() > exp);
 
         if (existing && isExpired) {
-            // CAS takeover: sostituisci solo se currentValue == existing
             const takeover = await bulkSetPropertyFiltered(PD_LOCK_KEY, {
                 filter: { entityIds: [entityId], hasProperty: true, currentValue: existing },
                 value: myLock
@@ -353,7 +349,6 @@ async function acquireLockOrWait(issue) {
             }
         }
 
-        // 3) attesa ritentando (backoff con jitter)
         const sleepMs = PD_LOCK_POLL_MS + Math.floor(Math.random() * 400);
         setStatus(`Aguardando fila em ${issue.key}… (tentativa ${attempt})`);
         await new Promise(r => setTimeout(r, sleepMs));
@@ -361,14 +356,12 @@ async function acquireLockOrWait(issue) {
 
     throw new Error(`Timeout aguardando fila para ${issue.key}. Tente novamente.`);
 }
-
 async function releaseLock(issue, myLock) {
     const { enableQueueLock } = await getAuth();
     if (!enableQueueLock || !myLock) return true;
     const entityId = Number(issue._id);
     if (!entityId) return true;
 
-    // elimina lock solo se il valore corrente combacia col mio (evita race)
     await bulkDeletePropertyFiltered(PD_LOCK_KEY, {
         entityIds: [entityId],
         currentValue: myLock
@@ -376,7 +369,7 @@ async function releaseLock(issue, myLock) {
     return true;
 }
 
-// ======= UI =======
+// ======= UI (inalterata salvo textos) =======
 const listEl = document.getElementById('list');
 const specialSectionEl = document.getElementById('specialSection');
 const specialListEl = document.getElementById('specialList');
@@ -397,10 +390,9 @@ exitBtn.addEventListener('click', () => {
     window.close();
 });
 
-// ⬅️ Dopo ogni SALVA, se resti nel modale, facciamo REFRESH per “fotografare” il nuovo PTS
 saveBtn.addEventListener('click', async () => {
     const ok = await doSave(false);
-    if (ok) await init();  // ricarica lista → pts aggiornati da sorgente Jira
+    if (ok) await init();
 });
 
 saveExitBtn.addEventListener('click', async () => {
@@ -469,7 +461,6 @@ async function doSave(exitAfter) {
             const userNew = (typeof it.newSp === 'number') ? it.newSp : it.sp;
             const lova = (PTS - userNew);
 
-            // ricalcola PAS dal server prima del write
             const { pas: PAS, idNum } = await (async () => {
                 const { baseUrl, email, token } = await getAuth();
                 const spFieldId = await resolveStoryPointsFieldId();
@@ -480,7 +471,6 @@ async function doSave(exitAfter) {
                 return { pas: data?.fields?.[spFieldId] ?? 0, idNum: Number(data?.id) || Number(it._id) || null };
             })();
 
-            // prepara baseline/O.B.T.
             const OBT = (PAS !== PTS);
             let NP;
             if (!OBT) {
@@ -489,8 +479,6 @@ async function doSave(exitAfter) {
                 NP = Math.max(0, Math.round(((PAS - lova) || 0) * 2) / 2);
             }
 
-            // === Corridoio di attesa: ACQUIRE LOCK (se abilitato) ===
-            // assicuriamo che l'oggetto it abbia _id per la property bulk
             if (!it._id && idNum) it._id = idNum;
             let myLock = null;
             try {
@@ -498,19 +486,16 @@ async function doSave(exitAfter) {
             } catch (lockErr) {
                 console.warn(`[point_down] lock failure on ${it.key}:`, lockErr?.message || lockErr);
                 setStatus(`❌ Não foi possível obter fila para ${it.key}. Pulando…`);
-                continue; // salta questa issue mantenendo le altre
+                continue;
             }
 
             try {
                 await updateStoryPoints(it.key, NP);
-
-                // ⬅️ Nuova baseline immediata: PTS diventa NP (finché non arriva il refresh)
                 it.sp = NP;
                 it.newSp = NP;
                 it.dirty = false;
-                it.pts = NP;   // baseline al valore scritto
+                it.pts = NP;
             } finally {
-                // === RILASCIA LOCK ===
                 try { await releaseLock(it, myLock); } catch { /* no-op */ }
             }
         }
@@ -528,7 +513,6 @@ async function doSave(exitAfter) {
         return false;
     } finally {
         SAVING = false;
-        // lo status potrà essere rimpiazzato dall’init() se resti nel modale
     }
 }
 
@@ -550,7 +534,6 @@ async function init() {
             fetchSpecialSprintIssues()
         ]);
 
-        // Opzione: forza l’import della card di test SOLO se abilitato in Options 
         let forcedIssue = null;
         if (forceTestCard) {
             try {
@@ -563,11 +546,9 @@ async function init() {
         const mainKeys = new Set(mainIssues.map(i => i.key));
         const specialsDedup = specialIssues.filter(i => !mainKeys.has(i.key));
 
-        // ⬅️ Alla ricarica, fotografiamo PTS = sp proveniente da Jira (nuova baseline )
         MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, pts: x.sp }));
         MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, _special: true, pts: x.sp }));
 
-        // Aggiungi la card forzata solo se non esiste già
         if (forcedIssue && !mainKeys.has(forcedIssue.key) && !MODEL_SPECIAL.some(i => i.key === forcedIssue.key)) {
             MODEL_MAIN.unshift({ ...forcedIssue, _baseUrl: baseUrl, dirty: false, pts: forcedIssue.sp, _forced: true });
             console.log("[point_down] FGC-9683 adicionada (opção habilitada).");
