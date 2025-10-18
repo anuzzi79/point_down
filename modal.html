@@ -27,11 +27,16 @@
 
         <!-- Lista principal (JQL padrão / opções) -->
         <div id="list" class="list"></div>
+        <!-- Toggle per mostrare/ocultare cards zerados (lista principale) → POSIZIONATO DOPO LA LISTA -->
+        <div id="mainZeroToggle" class="zero-toggle"></div>
 
         <!-- Seção especial: explorat* / regres* (independente de assignee) -->
         <section id="specialSection" class="hidden">
             <h2 class="special-title">Cards em que você está provavelmente envolvido por tratarem de Exploratório ou Regression</h2>
+
             <div id="specialList" class="list"></div>
+            <!-- Toggle indipendente per la sezione Special → POSIZIONATO DOPO LA LISTA -->
+            <div id="specialZeroToggle" class="zero-toggle"></div>
         </section>
 
         <footer>

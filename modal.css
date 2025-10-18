@@ -84,8 +84,20 @@ footer button,
 */
 
 .status {
-  margin: 8px 0 12px;
+  margin: 8px 0 6px;
   color: #9cb3c9;
+}
+
+/* Toggle tester "link-like" per mostrare/ocultare zerados */
+.zero-toggle {
+  margin: 6px 0 12px;
+  color: #7ab7ff;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+.zero-toggle:hover {
+  text-decoration: underline;
 }
 
 .list {

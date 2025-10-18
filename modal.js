@@ -400,6 +400,8 @@ async function releaseLock(issue, myLock) {
 const listEl = document.getElementById('list');
 const specialSectionEl = document.getElementById('specialSection');
 const specialListEl = document.getElementById('specialList');
+const mainZeroToggleEl = document.getElementById('mainZeroToggle');
+const specialZeroToggleEl = document.getElementById('specialZeroToggle');
 
 const saveBtn = document.getElementById('saveBtn');
 const saveExitBtn = document.getElementById('saveExitBtn');
@@ -410,6 +412,10 @@ let MODEL_MAIN = [];
 let MODEL_SPECIAL = [];
 let SAVING = false;
 let watchdog = null;
+
+// Flags di filtro zerados (default: occultati)
+let HIDE_ZERO_MAIN = true;
+let HIDE_ZERO_SPECIAL = true;
 
 /* ---- PULSE control (Save) -------------------------------------------- */
 function anyDirty() {
@@ -473,24 +479,53 @@ function renderList(targetEl, arr) {
         };
         const clampHalf = (v) => { let n = Math.round((parseFloat(v) || 0) * 2) / 2; return n < 0 ? 0 : n; };
 
-        upB.addEventListener('click', () => { const nv = clampHalf((+spI.value) + 0.5); spI.value = nv; item.newSp = nv; setDirty(true); });
-        dnB.addEventListener('click', () => { const nv = clampHalf((+spI.value) - 0.5); spI.value = nv; item.newSp = nv; setDirty(true); });
-        spI.addEventListener('change', () => { const nv = clampHalf(spI.value); spI.value = nv; item.newSp = nv; setDirty(true); });
+        const onChanged = () => {
+            setDirty(true);
+            // Re-render per applicare subito eventuale filtro "zerados"
+            render();
+        };
+
+        upB.addEventListener('click', () => { const nv = clampHalf((+spI.value) + 0.5); spI.value = nv; item.newSp = nv; onChanged(); });
+        dnB.addEventListener('click', () => { const nv = clampHalf((+spI.value) - 0.5); spI.value = nv; item.newSp = nv; onChanged(); });
+        spI.addEventListener('change', () => { const nv = clampHalf(spI.value); spI.value = nv; item.newSp = nv; onChanged(); });
 
         targetEl.appendChild(node);
     });
 }
 
-function render() {
-    renderList(listEl, MODEL_MAIN);
+// Helper: filtra in base a HIDE_ZERO_*
+function visibleItems(arr, hideZero) {
+    if (!hideZero) return arr;
+    return arr.filter(it => Number(it.newSp ?? it.sp ?? 0) !== 0);
+}
 
-    if (MODEL_SPECIAL.length > 0) {
+function updateZeroToggles() {
+    if (mainZeroToggleEl) {
+        mainZeroToggleEl.textContent = HIDE_ZERO_MAIN ? "Mostra os cards zerados" : "Oculte os cards zerados";
+        mainZeroToggleEl.onclick = () => { HIDE_ZERO_MAIN = !HIDE_ZERO_MAIN; render(); };
+    }
+    if (specialZeroToggleEl) {
+        specialZeroToggleEl.textContent = HIDE_ZERO_SPECIAL ? "Mostra os cards zerados" : "Oculte os cards zerados";
+        specialZeroToggleEl.onclick = () => { HIDE_ZERO_SPECIAL = !HIDE_ZERO_SPECIAL; render(); };
+    }
+}
+
+function render() {
+    // Applica filtro zerados per ciascuna sezione
+    const mainVis = visibleItems(MODEL_MAIN, HIDE_ZERO_MAIN);
+    renderList(listEl, mainVis);
+
+    const specialVis = visibleItems(MODEL_SPECIAL, HIDE_ZERO_SPECIAL);
+    if (specialVis.length > 0 || MODEL_SPECIAL.length > 0) {
         specialSectionEl.classList.remove('hidden');
-        renderList(specialListEl, MODEL_SPECIAL);
+        renderList(specialListEl, specialVis);
     } else {
         specialSectionEl.classList.add('hidden');
         specialListEl.innerHTML = '';
     }
+
+    // Aggiorna i testi dei toggle
+    updateZeroToggles();
 
     // al termine del render, assicura stato corretto del Save
     updateSavePulse();
@@ -535,7 +570,7 @@ async function doSave(exitAfter) {
 
             if (!it._id && idNum) it._id = idNum;
             let myLock = null;
-            try {
+                       try {
                 myLock = await acquireLockOrWait(it);
             } catch (lockErr) {
                 console.warn(`[point_down] lock failure on ${it.key}:`, lockErr?.message || lockErr);
@@ -580,6 +615,11 @@ async function init() {
         setStatus('⏳ Demorando… verifique: opções salvas? token válido? acesso ao board? (Veja Console F12)');
     }, 12000);
 
+    // Reset default filtro: occultare zerados a ogni lancio
+    HIDE_ZERO_MAIN = true;
+    HIDE_ZERO_SPECIAL = true;
+    updateZeroToggles();
+
     try {
         const { baseUrl, forceTestCard } = await getAuth();
         const spId = await resolveStoryPointsFieldId();
@@ -603,17 +643,18 @@ async function init() {
         const mainKeys = new Set(mainIssues.map(i => i.key));
         const specialsDedup = specialIssues.filter(i => !mainKeys.has(i.key));
 
-        MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, pts: x.sp }));
-        MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: baseUrl, dirty: false, _special: true, pts: x.sp }));
+        const { baseUrl: _b } = await getAuth();
+        MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: _b, dirty: false, pts: x.sp }));
+        MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: _b, dirty: false, _special: true, pts: x.sp }));
 
         if (forcedIssue && !mainKeys.has(forcedIssue.key) && !MODEL_SPECIAL.some(i => i.key === forcedIssue.key)) {
-            MODEL_MAIN.unshift({ ...forcedIssue, _baseUrl: baseUrl, dirty: false, pts: forcedIssue.sp, _forced: true });
+            MODEL_MAIN.unshift({ ...forcedIssue, _baseUrl: _b, dirty: false, pts: forcedIssue.sp, _forced: true });
             console.log("[point_down] FGC-9683 adicionada (opção habilitada).");
         }
 
         clearTimeout(watchdog);
 
-        const sprintListUrl = `${baseUrl.replace(/\/+$/, '')}/issues/?jql=${encodeURIComponent('sprint in openSprints()')}`;
+        const sprintListUrl = `${_b.replace(/\/+$/, '')}/issues/?jql=${encodeURIComponent('sprint in openSprints()')}`;
         const boardHref = BOARD_URL_FIXED;
 
         setStatusTwoLinks('Go to Sprint!', sprintListUrl, 'Board', boardHref);
