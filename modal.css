@@ -22,6 +22,8 @@ header {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+  /* aumenta leggermente lo spazio tra titolo e pulsanti quando sono vicini */
+  column-gap: 16px;
 }
 
 h1 {
@@ -29,12 +31,16 @@ h1 {
   font-size: 20px;
 }
 
+/* Azioni header */
 .actions {
   display: flex;
   gap: 10px;
   align-items: center;
+  /* margine di sicurezza per staccare dai titoli quando layout stringe */
+  margin-left: 8px;
 }
 
+/* Bottoni generici */
 .actions button,
 footer button,
 .controls button {
@@ -46,6 +52,28 @@ footer button,
   cursor: pointer;
 }
 
+/* --- Bottoni icona uniformi (refresh + opções) --- */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;              /* stessa dimensione per entrambi */
+  height: 36px;
+  padding: 0;               /* nessun padding interno variabile */
+  background: #1a1f27;
+  border: 1px solid #2a3340;
+  border-radius: 8px;
+  text-decoration: none;    /* per l'anchor */
+  color: #e6e6e6;
+}
+
+.icon-btn .icon-img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* (legacy) stile della vecchia pill "opções" non più usato ma lasciato per compatibilità
 .actions .opt {
   background: #1a1f27;
   border: 1px solid #2a3340;
@@ -53,6 +81,7 @@ footer button,
   padding: 8px 10px;
   display: inline-block;
 }
+*/
 
 .status {
   margin: 8px 0 12px;
