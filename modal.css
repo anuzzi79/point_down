@@ -44,7 +44,7 @@ h1 {
 .actions button,
 footer button,
 .controls button {
-  background: #1a1f27;
+  background: #1a1f27;           /* colore standard */
   color: #e6e6e6;
   border: 1px solid #2a3340;
   border-radius: 8px;
@@ -162,4 +162,40 @@ footer {
   /* sfondo per coprire la lista quando si sovrappone durante lo scroll */
   background: linear-gradient(to top, rgba(11, 14, 18, 1) 70%, rgba(11, 14, 18, 0.6) 100%);
   z-index: 10;
+}
+
+/* === SAVE PULSE ========================================================= */
+/* Pulsazione morbida (0.33s) dal grigio standard al verde, con lieve glow */
+@keyframes savePulse {
+  0% {
+    background: #1a1f27;
+    border-color: #2a3340;
+    box-shadow: 0 0 0px rgba(46, 204, 113, 0);
+  }
+  100% {
+    background: #2f774e; /* verde scelto */
+    border-color: #2f774e;
+    box-shadow: 0 0 10px rgba(46, 204, 113, 0.25);
+  }
+}
+
+/* Classe applicata dinamicamente quando esistono modifiche */
+.save-pulsing {
+  animation: savePulse 0.33s ease-in-out infinite alternate;
+}
+
+/* === STATUS PULSE (azzurro → verde) durante il salvataggio ============== */
+@keyframes statusPulse {
+  0% {
+    color: #7ab7ff; /* azzurro */
+    text-shadow: 0 0 0 rgba(122, 183, 255, 0);
+  }
+  100% {
+    color: #2ecc71; /* verde */
+    text-shadow: 0 0 8px rgba(46, 204, 113, 0.35);
+  }
+}
+.status-pulsing {
+  font-weight: 700;                 /* grassetto */
+  animation: statusPulse 0.33s ease-in-out infinite alternate;
 }

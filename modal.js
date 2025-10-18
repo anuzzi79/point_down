@@ -28,6 +28,11 @@ function setStatus(msg) {
     if (el) el.textContent = msg;
     console.log('[point_down]', msg);
 }
+function setStatusSaving(active) {
+    const el = document.getElementById('status');
+    if (!el) return;
+    el.classList.toggle('status-pulsing', !!active);
+}
 
 function setStatusTwoLinks(sprintLabel, sprintHref, boardLabel, boardHref) {
     const el = document.getElementById('status');
@@ -40,16 +45,14 @@ function setStatusTwoLinks(sprintLabel, sprintHref, boardLabel, boardHref) {
     aSprint.target = "_blank";
     aSprint.rel = "noopener noreferrer";
 
-    const spacer = document.createTextNode("   ");
-
     const aBoard = document.createElement('a');
     aBoard.textContent = boardLabel;
     aBoard.href = boardHref;
     aBoard.target = "_blank";
     aBoard.rel = "noopener noreferrer";
+    aBoard.style.marginLeft = "16px"; // ← più separazione tra “Go to Sprint!” e “Board”
 
     el.appendChild(aSprint);
-    el.appendChild(spacer);
     el.appendChild(aBoard);
 
     console.log('[point_down] status links ->', { sprintHref, boardHref });
@@ -84,8 +87,9 @@ async function getAuth() {
     if (!baseUrl || !email || !token) {
         throw new Error("Credenciais Jira não configuradas. Abra 'opções' e preencha Base URL, Email e Token.");
     }
-    const _forceTestCard = (typeof forceTestCard === 'boolean') ? forceTestCard : true;
-    const _enableQueueLock = (typeof enableQueueLock === 'boolean') ? enableQueueLock : true;
+    // === Defaults para as opções do screenshot ===
+    const _forceTestCard = (typeof forceTestCard === 'boolean') ? forceTestCard : false; // default: DESABILITADO
+    const _enableQueueLock = (typeof enableQueueLock === 'boolean') ? enableQueueLock : true; // default: HABILITADO
 
     // aplica defaults se não houver nada salvo
     const _statusFilters = (statusFilters && typeof statusFilters === 'object')
@@ -102,24 +106,19 @@ async function getAuth() {
 
 // ======= JQL helper: monta cláusula de status a partir das opções =======
 function buildStatusClauseFromOptions(statusFilters) {
-    // coleta status marcados
     const enabled = Object.entries(statusFilters || {})
         .filter(([, v]) => !!v)
         .map(([k]) => k)
         .filter(Boolean);
 
     if (enabled.length === 0) {
-        // Nenhum status selecionado → retorna filtro que não encontra nada, mas é válido
         return "(status IS EMPTY)";
     }
     const quoted = enabled.map(s => `"${s.replace(/"/g, '\\"')}"`).join(", ");
     return `status IN (${quoted})`;
 }
 
-/**
- * Combina JQL base (do usuário ou default) + cláusula de status dinâmica.
- * A cláusula de status PREVALE sempre (é sempre somada).
- */
+/** Combina JQL base + filtro status (sempre somado) */
 function jqlWithDynamicStatuses(baseJql, statusFilters) {
     const statusClause = buildStatusClauseFromOptions(statusFilters);
     const trimmed = (baseJql || "").trim();
@@ -139,7 +138,6 @@ async function resolveStoryPointsFieldId() {
         return FIELD_CACHE.spFieldId;
     }
 
-    // (fallback não usado)
     throw new Error("SP field fallback não suportado neste build.");
 }
 
@@ -185,22 +183,20 @@ async function fetchIssuesByJql(finalJql, spFieldId) {
     })).sort((a, b) => (b.sp || 0) - (a.sp || 0));
 }
 
-// JQL padrão (assignee = currentUser); agora SEM 'statusCategory != Done' (filtro de status é dinâmico)
+// JQL padrão (assignee = currentUser)
 async function fetchCurrentSprintIssues() {
     const { jql, statusFilters } = await getAuth();
 
-    // Base default enxuta: sprint aberto + assignee corrente
     const base = (jql && jql.trim())
         ? jql.trim()
         : 'sprint in openSprints() AND assignee = currentUser()';
 
-    // Soma SEMPRE a cláusula dinâmica de status
     const finalJql = jqlWithDynamicStatuses(base, statusFilters);
     const spFieldId = await resolveStoryPointsFieldId();
     return fetchIssuesByJql(finalJql, spFieldId);
 }
 
-// JQL especial (explorat*/regres*), também soma filtro dinâmico de status
+// JQL especial (explorat*/regres*)
 async function fetchSpecialSprintIssues() {
     const { statusFilters } = await getAuth();
     const specialBase =
@@ -210,7 +206,7 @@ async function fetchSpecialSprintIssues() {
     return fetchIssuesByJql(specialJql, spFieldId);
 }
 
-/** Fetch direto por chave (respeita apenas campo SP; status não é aplicado aqui por chave específica) */
+/** Fetch por chave específica */
 async function fetchIssueByKey(issueKey) {
     const { baseUrl, email, token } = await getAuth();
     const spFieldId = await resolveStoryPointsFieldId();
@@ -247,7 +243,7 @@ async function updateStoryPoints(issueKey, newValue) {
     return true;
 }
 
-// ======= Lock helpers (inalterati) =======
+// ======= Lock helpers =======
 function nowIsoPlus(ms) { return new Date(Date.now() + ms).toISOString(); }
 function randNonce() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; }
 async function pollTask(locationUrl, { email, token }) {
@@ -369,7 +365,7 @@ async function releaseLock(issue, myLock) {
     return true;
 }
 
-// ======= UI (inalterata salvo textos) =======
+// ======= UI =======
 const listEl = document.getElementById('list');
 const specialSectionEl = document.getElementById('specialSection');
 const specialListEl = document.getElementById('specialList');
@@ -383,6 +379,21 @@ let MODEL_MAIN = [];
 let MODEL_SPECIAL = [];
 let SAVING = false;
 let watchdog = null;
+
+/* ---- PULSE control (Save) -------------------------------------------- */
+function anyDirty() {
+    return MODEL_MAIN.some(m => m.dirty) || MODEL_SPECIAL.some(m => m.dirty);
+}
+function startSavePulse() {
+    saveBtn?.classList.add('save-pulsing');
+}
+function stopSavePulse() {
+    saveBtn?.classList.remove('save-pulsing'); // torna al colore standard
+}
+function updateSavePulse() {
+    if (anyDirty()) startSavePulse();
+    else stopSavePulse();
+}
 
 refreshBtn.addEventListener('click', () => init());
 exitBtn.addEventListener('click', () => {
@@ -424,7 +435,11 @@ function renderList(targetEl, arr) {
         sumD.textContent = item.summary || '(sem resumo)';
         spI.value = (item.newSp ?? item.sp ?? 0);
 
-        const setDirty = (d) => { item.dirty = d; dirtyEl.classList.toggle('hidden', !d); };
+        const setDirty = (d) => { 
+            item.dirty = d; 
+            dirtyEl.classList.toggle('hidden', !d); 
+            updateSavePulse();             // ← aggiorna pulsazione del Save
+        };
         const clampHalf = (v) => { let n = Math.round((parseFloat(v) || 0) * 2) / 2; return n < 0 ? 0 : n; };
 
         upB.addEventListener('click', () => { const nv = clampHalf((+spI.value) + 0.5); spI.value = nv; item.newSp = nv; setDirty(true); });
@@ -445,12 +460,20 @@ function render() {
         specialSectionEl.classList.add('hidden');
         specialListEl.innerHTML = '';
     }
+
+    // al termine del render, assicura stato corretto del Save
+    updateSavePulse();
 }
 
 async function doSave(exitAfter) {
     if (SAVING) return false;
     SAVING = true;
-    setStatus('Salvando alterações…');
+
+    // appena parte il salvataggio:
+    stopSavePulse();                    // ← smette di lampeggiare subito dopo il click
+    setStatus('Salvando alterações…');  // testo di stato
+    setStatusSaving(true);              // ← fa pulsare (azzurro → verde)
+
     try {
         const dirtyMain = MODEL_MAIN.filter(m => m.dirty && (m.newSp ?? m.sp) !== m.sp);
         const dirtySpec = MODEL_SPECIAL.filter(m => m.dirty && (m.newSp ?? m.sp) !== m.sp);
@@ -513,11 +536,14 @@ async function doSave(exitAfter) {
         return false;
     } finally {
         SAVING = false;
+        // termina la pulsazione dello stato al termine del ciclo
+        setStatusSaving(false);
     }
 }
 
 async function init() {
     setStatus('Carregando issues da sprint atual...');
+    setStatusSaving(false); // assicurati che lo stato non stia pulsando
     if (watchdog) clearTimeout(watchdog);
     watchdog = setTimeout(() => {
         setStatus('⏳ Demorando… verifique: opções salvas? token válido? acesso ao board? (Veja Console F12)');

@@ -146,14 +146,27 @@
     <small class="hint">Ex.: 17:50. O modal será aberto automaticamente todos os dias nesse horário (hora
         local).</small>
 
-    <!-- 🔻 PRIMA era qui il blocco bottoni; lo spostiamo sotto la sezione Avançadas -->
-
     <!-- Sezione AVANZATE (collassabile) -->
     <div id="advancedSection">
         <hr />
         <h2>Preferências</h2>
 
-        <label>
+        <!-- 🔼 Spostato in testa: Filtros de Status -->
+        <fieldset id="statusFiltersBox" style="margin-top:0;">
+            <legend>Filtros de Status (lista principal)</legend>
+            <div class="status-grid">
+                <label><input type="checkbox" id="st_todo" /> To Do</label>
+                <label><input type="checkbox" id="st_inprogress" /> In Progress</label>
+                <label><input type="checkbox" id="st_blocked" /> Blocked</label>
+                <label><input type="checkbox" id="st_needreqs" /> Need Reqs</label>
+                <label><input type="checkbox" id="st_done" /> Done</label>
+            </div>
+            <small class="hint">As seleções acima sempre se somam ao seu JQL. Se nenhum status for selecionado, nenhuma
+                card será retornada.</small>
+        </fieldset>
+
+        <!-- Opzioni avanzate rimanenti -->
+        <label style="margin-top:16px;">
             <input type="checkbox" id="forceTestCard" />
             <span>Sim, quero que apareça a card de teste! (FGC-9683)</span>
         </label>
@@ -173,22 +186,9 @@
         </label>
         <small class="hint">Quando desabilitado, a abertura automática não acontece nos fins de semana.
             Abertura manual continua possível em qualquer dia.</small>
-
-        <fieldset id="statusFiltersBox" style="margin-top:16px;">
-            <legend>Filtros de Status (lista principal)</legend>
-            <div class="status-grid">
-                <label><input type="checkbox" id="st_todo" /> To Do</label>
-                <label><input type="checkbox" id="st_inprogress" /> In Progress</label>
-                <label><input type="checkbox" id="st_blocked" /> Blocked</label>
-                <label><input type="checkbox" id="st_needreqs" /> Need Reqs</label>
-                <label><input type="checkbox" id="st_done" /> Done</label>
-            </div>
-            <small class="hint">As seleções acima sempre se somam ao seu JQL. Se nenhum status for selecionado, nenhuma
-                card será retornada.</small>
-        </fieldset>
     </div>
 
-    <!-- 🔻 Bottoni ora restano SEMPRE in fondo (sotto Avançadas) -->
+    <!-- Bottoni -->
     <div class="buttons">
         <button id="saveBtn">Salvar</button>
         <button id="testBtn">Testar conexão</button>

@@ -127,10 +127,13 @@ document.getElementById('testBtn').addEventListener('click', async () => {
         alarmEl.value = "17:50";
     }
 
-    // Opções avançadas: default = habilitadas
-    forceTestCardEl.checked = (typeof forceTestCard === 'boolean') ? forceTestCard : true;
+    // === Defaults para as opções do screenshot ===
+    // Card de teste: DESMARCADO por padrão
+    forceTestCardEl.checked = (typeof forceTestCard === 'boolean') ? forceTestCard : false;
+    // Lock cooperativo: MARCADO por padrão
     enableQueueLockEl.checked = (typeof enableQueueLock === 'boolean') ? enableQueueLock : true;
-    enableWeekendEl.checked = (typeof enableWeekend === 'boolean') ? enableWeekend : true;
+    // Notificações no fim de semana: DESMARCADO por padrão
+    enableWeekendEl.checked = (typeof enableWeekend === 'boolean') ? enableWeekend : false;
 
     // Status filters (aplica defaults se não existir no storage)
     (function applyStatusToUI(statusFilters) {
