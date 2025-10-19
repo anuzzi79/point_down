@@ -116,7 +116,8 @@ footer button,
   background: #11161d;
   border: 1px solid #223042;
   border-radius: 12px;
-  padding: 12px;
+  /* ↓ Riduciamo il padding inferiore da 12px a 6px (almeno metà) */
+  padding: 12px 12px 6px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -151,6 +152,26 @@ footer button,
   color: #e6e6e6;
 }
 
+/* --- Status category label (in basso a destra) --- */
+.status-label {
+  margin-top: auto;            /* spinge in basso dentro la card (flex col) */
+  align-self: flex-end;        /* allinea a destra */
+  font-weight: 700;            /* leggermente “importante” come il titolo */
+  font-size: 11px;             /* un po' più piccolo del titolo */
+  opacity: 0.95;
+  margin-bottom: 0;            /* ↓ distanza minima dal bordo inferiore */
+}
+
+/* Colori richiesti */
+.status-label.st-done        { color: #2ecc71; }  /* Verde */
+.status-label.st-inprogress  { color: #7ab7ff; }  /* Azzurro = colore del link/titolo */
+.status-label.st-blocked     { color: #ff5b5b; }  /* Rosso */
+.status-label.st-needreqs    { color: #f5c97a; }  /* Giallo */
+.status-label.st-todo        { color: #cfd9e3; }  /* Grigio chiaro */
+
+/* fallback generico */
+.status-label.st-unknown     { color: #9cb3c9; }
+
 .dirty {
   color: #f5c97a;
   font-size: 12px;
@@ -160,7 +181,7 @@ footer button,
   display: none;
 }
 
-/* Footer “freezato” (sticky) al fondo del viewport durante lo scroll */
+/* Footer “freezato” (sticky) al fondo del viewport durante lo scroll) */
 footer {
   position: sticky;
   bottom: 0;

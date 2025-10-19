@@ -144,7 +144,8 @@ async function resolveStoryPointsFieldId() {
 // ======= Jira: search helper via /search/jql (POST + nextPageToken) =======
 async function fetchIssuesByJql(finalJql, spFieldId) {
     const { baseUrl, email, token } = await getAuth();
-    const fields = ["summary", spFieldId];
+    // ➕ chiediamo anche 'status' per poter mostrare la **name** precisa
+    const fields = ["summary", spFieldId, "status"];
     let nextPageToken = null;
     const maxResults = 100;
     const all = [];
@@ -175,12 +176,21 @@ async function fetchIssuesByJql(finalJql, spFieldId) {
         nextPageToken = data.nextPageToken;
     }
 
-    return all.map(it => ({
-        key: it.key,
-        summary: it.fields.summary,
-        sp: it.fields[spFieldId] ?? 0,
-        _id: it.id
-    })).sort((a, b) => (b.sp || 0) - (a.sp || 0));
+    // ⚠️ PRIMA prendeva la category ("To Do/In Progress/Done") → mostrava "To Do" anche quando lo status era "Blocked".
+    //    Ora preferiamo SEMPRE il nome esatto dello status (st.name) e usiamo la category solo come fallback.
+    return all.map(it => {
+        const st = it.fields.status || {};
+        const stName = st.name || "Unknown";
+        const stCat = (st.statusCategory && st.statusCategory.name) || "Unknown";
+        return {
+            key: it.key,
+            summary: it.fields.summary,
+            sp: it.fields[spFieldId] ?? 0,
+            _id: it.id,
+            statusName: stName,
+            statusCat: stCat
+        };
+    }).sort((a, b) => (b.sp || 0) - (a.sp || 0));
 }
 
 // JQL padrão (assignee = currentUser)
@@ -241,7 +251,7 @@ async function fetchSpecialSprintIssues() {
 async function fetchIssueByKey(issueKey) {
     const { baseUrl, email, token } = await getAuth();
     const spFieldId = await resolveStoryPointsFieldId();
-    const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=${encodeURIComponent("summary," + spFieldId)}`;
+    const url = `${baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=${encodeURIComponent("summary," + spFieldId + ",status")}`;
 
     const r = await fetchWithTimeout(url, { headers: headers(email, token) }, 20000);
     if (!r.ok) {
@@ -249,11 +259,16 @@ async function fetchIssueByKey(issueKey) {
         throw new Error(`Falha ao buscar issue ${issueKey}: ` + (txt || r.status));
     }
     const data = await r.json();
+    const st = data.fields?.status || {};
+    const stName = st.name || "Unknown";
+    const stCat = (st.statusCategory && st.statusCategory.name) || "Unknown";
     return {
         key: data.key,
         summary: data.fields?.summary || "(sem resumo)",
         sp: data.fields?.[spFieldId] ?? 0,
-        _id: data.id
+        _id: data.id,
+        statusName: stName,
+        statusCat: stCat
     };
 }
 
@@ -455,6 +470,17 @@ window.addEventListener('beforeunload', () => {
     try { chrome.runtime.sendMessage({ type: "pd:closed" }); } catch { }
 });
 
+function normStatusKey(s) {
+    const t = String(s || "").toLowerCase().trim();
+    if (!t) return "unknown";
+    if (t.includes("in progress")) return "inprogress";
+    if (t.includes("blocked")) return "blocked";
+    if (t.includes("need req")) return "needreqs";   // copre Need Reqs/Need Recs
+    if (t.includes("to do")) return "todo";
+    if (t.includes("done")) return "done";
+    return "unknown";
+}
+
 function renderList(targetEl, arr) {
     targetEl.innerHTML = '';
     const tpl = document.getElementById('itemTpl');
@@ -466,11 +492,18 @@ function renderList(targetEl, arr) {
         const upB = node.querySelector('.up');
         const dnB = node.querySelector('.down');
         const dirtyEl = node.querySelector('.dirty');
+        const statusEl = node.querySelector('.status-label');
 
         keyA.textContent = item.key;
         keyA.href = `${item._baseUrl}/browse/${encodeURIComponent(item.key)}`;
         sumD.textContent = item.summary || '(sem resumo)';
         spI.value = (item.newSp ?? item.sp ?? 0);
+
+        // === Status label (preferisci nome esatto; fallback categoria) ===
+        const sName = item.statusName || item.statusCat || 'Unknown';
+        const classKey = normStatusKey(sName) || normStatusKey(item.statusCat);
+        statusEl.textContent = sName;
+        statusEl.classList.add(`st-${classKey}`);
 
         const setDirty = (d) => { 
             item.dirty = d; 
@@ -570,7 +603,7 @@ async function doSave(exitAfter) {
 
             if (!it._id && idNum) it._id = idNum;
             let myLock = null;
-                       try {
+            try {
                 myLock = await acquireLockOrWait(it);
             } catch (lockErr) {
                 console.warn(`[point_down] lock failure on ${it.key}:`, lockErr?.message || lockErr);
@@ -648,7 +681,9 @@ async function init() {
         MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: _b, dirty: false, _special: true, pts: x.sp }));
 
         if (forcedIssue && !mainKeys.has(forcedIssue.key) && !MODEL_SPECIAL.some(i => i.key === forcedIssue.key)) {
-            MODEL_MAIN.unshift({ ...forcedIssue, _baseUrl: _b, dirty: false, pts: forcedIssue.sp, _forced: true });
+            // Mantém também os novos campos de status
+            const forcedWithStatus = { ...forcedIssue, _baseUrl: _b, dirty: false, pts: forcedIssue.sp };
+            MODEL_MAIN.unshift(forcedWithStatus);
             console.log("[point_down] FGC-9683 adicionada (opção habilitada).");
         }
 
