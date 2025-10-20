@@ -66,13 +66,50 @@ function headers(email, token) {
         "Content-Type": "application/json"
     };
 }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function fetchWithTimeout(url, opts = {}, ms = 20000) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), ms);
-    try {
-        return await fetch(url, { ...opts, signal: ctrl.signal });
-    } finally {
-        clearTimeout(t);
+    // Retry/backoff centralizzato per gestire 503/5xx e risposte HTML (error page)
+    const maxRetries = 3;
+    let attempt = 0;
+    let backoff = 300;
+
+    while (true) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), ms);
+        try {
+            const res = await fetch(url, {
+                ...opts,
+                headers: { "Accept": "application/json", ...(opts.headers || {}) },
+                signal: ctrl.signal
+            });
+
+            const contentType = res.headers.get('content-type') || '';
+            const isServerError = res.status >= 500 && res.status < 600;
+            const looksLikeHtmlError = contentType.includes('text/html');
+
+            if ((isServerError || looksLikeHtmlError) && attempt < maxRetries) {
+                attempt++;
+                console.warn(`[point_down] transient error (status=${res.status}, html=${looksLikeHtmlError}). Retry ${attempt}/${maxRetries}…`);
+                clearTimeout(t);
+                await sleep(backoff + Math.floor(Math.random() * 200));
+                backoff *= 2;
+                continue;
+            }
+
+            return res;
+        } catch (e) {
+            if (attempt < maxRetries) {
+                attempt++;
+                console.warn(`[point_down] network error: ${e?.message || e}. Retry ${attempt}/${maxRetries}…`);
+                clearTimeout(t);
+                await sleep(backoff + Math.floor(Math.random() * 200));
+                backoff *= 2;
+                continue;
+            }
+            throw e;
+        } finally {
+            clearTimeout(t);
+        }
     }
 }
 
