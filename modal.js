@@ -20,6 +20,10 @@ const DEFAULT_STATUS_FILTERS = {
     "Blocked": true,
     "Need Reqs": true,
     "Done": false,
+    // nuovi status opzionali (default: deselezionati)
+    "Code Review": false,
+    "Testing": false,
+    "QA": false,
 };
 
 // ======= Helpers base =======
@@ -515,6 +519,10 @@ function normStatusKey(s) {
     if (t.includes("need req")) return "needreqs";   // copre Need Reqs/Need Recs
     if (t.includes("to do")) return "todo";
     if (t.includes("done")) return "done";
+    // nuovi status (classe dedicata per gestione colore da JS)
+    if (t.includes("code review")) return "review";
+    if (t.includes("testing")) return "testing";
+    if (t === "qa" || t.includes(" qa")) return "qa";
     return "unknown";
 }
 
@@ -541,6 +549,10 @@ function renderList(targetEl, arr) {
         const classKey = normStatusKey(sName) || normStatusKey(item.statusCat);
         statusEl.textContent = sName;
         statusEl.classList.add(`st-${classKey}`);
+        // Forza colore bianco per i nuovi status richiesti senza toccare il CSS
+        if (classKey === 'review' || classKey === 'testing' || classKey === 'qa') {
+            statusEl.style.color = '#ffffff';
+        }
 
         const setDirty = (d) => { 
             item.dirty = d; 

@@ -15,6 +15,10 @@ const DEFAULT_STATUS_FILTERS = {
     "Blocked": true,
     "Need Reqs": true,
     "Done": false,
+    // ✅ Novos estados
+    "Code Review": true,
+    "Testing": true,
+    "QA": true,
 };
 
 const baseUrlEl = document.getElementById('baseUrl');
@@ -35,6 +39,10 @@ const stInProgressEl = document.getElementById('st_inprogress');
 const stBlockedEl = document.getElementById('st_blocked');
 const stNeedReqsEl = document.getElementById('st_needreqs');
 const stDoneEl = document.getElementById('st_done');
+// ✅ Novos
+const stCodeReviewEl = document.getElementById('st_codereview');
+const stTestingEl = document.getElementById('st_testing');
+const stQaEl = document.getElementById('st_qa');
 
 // Toggle sezione Avançadas (di default nascosta)
 advancedBtn.addEventListener('click', () => {
@@ -59,6 +67,10 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
         "Blocked": !!stBlockedEl?.checked,
         "Need Reqs": !!stNeedReqsEl?.checked,
         "Done": !!stDoneEl?.checked,
+        // ✅ Novos
+        "Code Review": !!stCodeReviewEl?.checked,
+        "Testing": !!stTestingEl?.checked,
+        "QA": !!stQaEl?.checked,
     };
 
     // valida e normaliza alarmTime
@@ -102,6 +114,10 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     stBlockedEl.checked = !!src["Blocked"];
     stNeedReqsEl.checked = !!src["Need Reqs"];
     stDoneEl.checked = !!src["Done"];
+    // ✅ Novos
+    stCodeReviewEl.checked = !!src["Code Review"];
+    stTestingEl.checked = !!src["Testing"];
+    stQaEl.checked = !!src["QA"];
 })();
 
 (async function init() {
@@ -145,6 +161,10 @@ document.getElementById('testBtn').addEventListener('click', async () => {
         stBlockedEl.checked = !!src["Blocked"];
         stNeedReqsEl.checked = !!src["Need Reqs"];
         stDoneEl.checked = !!src["Done"];
+        // ✅ Novos
+        stCodeReviewEl.checked = !!src["Code Review"];
+        stTestingEl.checked = !!src["Testing"];
+        stQaEl.checked = !!src["QA"];
     })(statusFilters);
 
     // Avançadas permanece oculta até clique
