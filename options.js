@@ -47,6 +47,43 @@ const stCodeReviewEl = document.getElementById('st_codereview');
 const stTestingEl = document.getElementById('st_testing');
 const stQaEl = document.getElementById('st_qa');
 
+// Presets de status conforme os screenshots
+const PRESET_DEV_STATUS = {
+    "To Do": false,
+    "In Progress": true,
+    "Blocked": true,
+    "Need Reqs": true,
+    "Done": false,
+    "Code Review": true,
+    "Testing": true,
+    "QA": true,
+};
+const PRESET_QA_STATUS = {
+    "To Do": false,
+    "In Progress": true,
+    "Blocked": true,
+    "Need Reqs": true,
+    "Done": false,
+    "Code Review": false,
+    "Testing": false,
+    "QA": false,
+};
+
+function applyStatusPreset(preset) {
+    stTodoEl.checked = !!preset["To Do"]; 
+    stInProgressEl.checked = !!preset["In Progress"]; 
+    stBlockedEl.checked = !!preset["Blocked"]; 
+    stNeedReqsEl.checked = !!preset["Need Reqs"]; 
+    stDoneEl.checked = !!preset["Done"]; 
+    stCodeReviewEl.checked = !!preset["Code Review"]; 
+    stTestingEl.checked = !!preset["Testing"]; 
+    stQaEl.checked = !!preset["QA"]; 
+}
+
+// Ao marcar uma role, aplicamos o preset correspondente (última ação vence)
+isDevEl?.addEventListener('change', () => { if (isDevEl.checked) applyStatusPreset(PRESET_DEV_STATUS); });
+isQaEl?.addEventListener('change', () => { if (isQaEl.checked) applyStatusPreset(PRESET_QA_STATUS); });
+
 // Toggle sezione Avançadas (di default nascosta)
 advancedBtn.addEventListener('click', () => {
     const visible = advancedSection.style.display === 'block';

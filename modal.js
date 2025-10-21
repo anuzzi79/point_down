@@ -120,9 +120,9 @@ async function fetchWithTimeout(url, opts = {}, ms = 20000) {
 // Estesa per includere também statusFilters dalle Opções
 async function getAuth() {
     const {
-        baseUrl, email, token, jql, forceTestCard, enableQueueLock, statusFilters
+        baseUrl, email, token, jql, forceTestCard, enableQueueLock, statusFilters, isDev, isQa
     } = await chrome.storage.sync.get([
-        "baseUrl", "email", "token", "jql", "forceTestCard", "enableQueueLock", "statusFilters"
+        "baseUrl", "email", "token", "jql", "forceTestCard", "enableQueueLock", "statusFilters", "isDev", "isQa"
     ]);
 
     if (!baseUrl || !email || !token) {
@@ -141,7 +141,9 @@ async function getAuth() {
         baseUrl, email, token, jql,
         forceTestCard: _forceTestCard,
         enableQueueLock: _enableQueueLock,
-        statusFilters: _statusFilters
+        statusFilters: _statusFilters,
+        isDev: !!isDev,
+        isQa: !!isQa
     };
 }
 
@@ -703,15 +705,23 @@ async function init() {
     updateZeroToggles();
 
     try {
-        const { baseUrl, forceTestCard } = await getAuth();
+        const { baseUrl, forceTestCard, isDev } = await getAuth();
         const spId = await resolveStoryPointsFieldId();
         const spName = (FIELD_CACHE && FIELD_CACHE.spFieldName) ? FIELD_CACHE.spFieldName : spId;
         setStatus(`Carregando issues da sprint atual... [SP: ${spName} (${spId})]`);
 
-        const [mainIssues, specialIssues] = await Promise.all([
-            fetchCurrentSprintIssues(),
-            fetchSpecialSprintIssues()
-        ]);
+        let mainIssues = [];
+        let specialIssues = [];
+        if (isDev) {
+            // Para DEV, não buscamos seção especial
+            mainIssues = await fetchCurrentSprintIssues();
+            specialIssues = [];
+        } else {
+            [mainIssues, specialIssues] = await Promise.all([
+                fetchCurrentSprintIssues(),
+                fetchSpecialSprintIssues()
+            ]);
+        }
 
         let forcedIssue = null;
         if (forceTestCard) {
