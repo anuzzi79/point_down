@@ -120,13 +120,18 @@
         .search-row {
             display: flex;
             gap: 8px;
-            align-items: center;
+            align-items: stretch; /* fa matchare altezze input e bottone */
             margin-top: 8px;
         }
         .search-row input[type=text] {
             flex: 1;
             padding: 8px;
         }
+        .search-row button {
+            margin-top: 0;            /* override dello stile globale dei bottoni */
+            padding: 0 12px;          /* compatto, stessa altezza dell'input */
+        }
+
         .search-words {
             display: flex;
             flex-wrap: wrap;
