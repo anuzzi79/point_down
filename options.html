@@ -116,6 +116,37 @@
             font-weight: 600;
         }
 
+        /* Procure por palavra */
+        .search-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 8px;
+        }
+        .search-row input[type=text] {
+            flex: 1;
+            padding: 8px;
+        }
+        .search-words {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .chip {
+            background: #f1f1f1;
+            border: 1px solid #ddd;
+            border-radius: 16px;
+            padding: 4px 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .chip .remove {
+            cursor: pointer;
+            font-weight: 700;
+        }
+
         .status-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(160px, 1fr));
@@ -192,6 +223,17 @@
             </div>
             <small class="hint">As seleções acima sempre se somam ao seu JQL. Se nenhum status for selecionado, nenhuma
                 card será retornada.</small>
+        </fieldset>
+
+        <!-- Procure por palavra -->
+        <fieldset id="searchWordsBox">
+            <legend>Procure por palavra</legend>
+            <div class="search-row">
+                <input id="searchWordInput" type="text" placeholder="Digite uma palavra e clique em +" />
+                <button id="addSearchWordBtn" title="Adicionar">+</button>
+            </div>
+            <small class="hint">No modal serão exibidas todas as cards encontradas na sprint com as palavras:</small>
+            <div id="searchWordsList" class="search-words"></div>
         </fieldset>
 
         <!-- Opzioni avanzate rimanenti -->

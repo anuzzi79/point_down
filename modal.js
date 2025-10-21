@@ -264,10 +264,11 @@ const SPECIAL_TERMS = [
     "exploratory"
 ];
 
-function buildSpecialClause() {
+function buildSpecialClause(extraWords = []) {
     // Build OR of (summary ~ "term" OR summary ~ "term*" OR description ~ "term" OR description ~ "term*")
     const parts = [];
-    for (const t of SPECIAL_TERMS) {
+    const allTerms = [...SPECIAL_TERMS, ...extraWords.filter(Boolean)];
+    for (const t of allTerms) {
         const term = t.replace(/"/g, '\\"');
         parts.push(
             `(summary ~ "${term}" OR summary ~ "${term}*" OR description ~ "${term}" OR description ~ "${term}*")`
@@ -279,9 +280,11 @@ function buildSpecialClause() {
 // JQL especial (explorat*/regres*) — sem assignee, **com filtros de status das opções**
 async function fetchSpecialSprintIssues() {
     const { statusFilters } = await getAuth();
+    const { searchWords } = await chrome.storage.sync.get(["searchWords"]);
     const spFieldId = await resolveStoryPointsFieldId();
 
-    const clause = buildSpecialClause();
+    const extra = Array.isArray(searchWords) ? searchWords : [];
+    const clause = buildSpecialClause(extra);
     const baseJql = `sprint in openSprints() AND (${clause})`;
 
     // ⬇️ Applica le stesse regole di filtro di status della lista principale

@@ -35,6 +35,11 @@ const advancedSection = document.getElementById('advancedSection');
 // Role flags
 const isDevEl = document.getElementById('isDev');
 const isQaEl = document.getElementById('isQa');
+// Procure por palavra
+const searchWordInputEl = document.getElementById('searchWordInput');
+const addSearchWordBtn = document.getElementById('addSearchWordBtn');
+const searchWordsListEl = document.getElementById('searchWordsList');
+let searchWords = [];
 
 // Checkboxes de Status
 const stTodoEl = document.getElementById('st_todo');
@@ -83,6 +88,45 @@ function applyStatusPreset(preset) {
 // Ao marcar uma role, aplicamos o preset correspondente (última ação vence)
 isDevEl?.addEventListener('change', () => { if (isDevEl.checked) applyStatusPreset(PRESET_DEV_STATUS); });
 isQaEl?.addEventListener('change', () => { if (isQaEl.checked) applyStatusPreset(PRESET_QA_STATUS); });
+
+// tornar Dev/QA mutuamente exclusivos
+isDevEl?.addEventListener('change', () => { if (isDevEl.checked) { isQaEl.checked = false; applyStatusPreset(PRESET_DEV_STATUS); } });
+isQaEl?.addEventListener('change', () => { if (isQaEl.checked) { isDevEl.checked = false; applyStatusPreset(PRESET_QA_STATUS); } });
+
+function renderSearchWords() {
+    searchWordsListEl.innerHTML = '';
+    (searchWords || []).forEach((w, idx) => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        const txt = document.createElement('span');
+        txt.textContent = w;
+        const rm = document.createElement('span');
+        rm.className = 'remove';
+        rm.textContent = '×';
+        rm.title = 'Remover';
+        rm.addEventListener('click', async () => {
+            searchWords.splice(idx, 1);
+            renderSearchWords();
+            await chrome.storage.sync.set({ searchWords });
+        });
+        chip.appendChild(txt);
+        chip.appendChild(rm);
+        searchWordsListEl.appendChild(chip);
+    });
+}
+
+addSearchWordBtn?.addEventListener('click', async () => {
+    const raw = (searchWordInputEl.value || '').trim();
+    if (!raw) return;
+    const word = raw.replace(/\s+/g, ' ');
+    if (!searchWords.includes(word)) {
+        searchWords.push(word);
+        renderSearchWords();
+        await chrome.storage.sync.set({ searchWords });
+    }
+    searchWordInputEl.value = '';
+    searchWordInputEl.focus();
+});
 
 // Toggle sezione Avançadas (di default nascosta)
 advancedBtn.addEventListener('click', () => {
@@ -167,11 +211,11 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     const {
         baseUrl, email, token, jql, alarmTime,
         forceTestCard, enableQueueLock, enableWeekend,
-        statusFilters, isDev, isQa
+        statusFilters, isDev, isQa, searchWords: storedSearchWords
     } = await chrome.storage.sync.get([
         "baseUrl", "email", "token", "jql", "alarmTime",
         "forceTestCard", "enableQueueLock", "enableWeekend",
-        "statusFilters", "isDev", "isQa"
+        "statusFilters", "isDev", "isQa", "searchWords"
     ]);
 
     if (baseUrl) baseUrlEl.value = baseUrl;
@@ -213,6 +257,12 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     // Role flags defaults: desmarcados se ausentes
     isDevEl.checked = (typeof isDev === 'boolean') ? isDev : false;
     isQaEl.checked = (typeof isQa === 'boolean') ? isQa : false;
+    // refletir exclusividade visual
+    if (isDevEl.checked && isQaEl.checked) { isQaEl.checked = false; }
+
+    // carrega palavras
+    searchWords = Array.isArray(storedSearchWords) ? storedSearchWords.filter(Boolean) : [];
+    renderSearchWords();
 
     // Avançadas permanece oculta até clique
     advancedSection.style.display = 'none';
