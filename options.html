@@ -97,6 +97,25 @@
             font-weight: 600;
         }
 
+        /* Topbar con titolo e flag ruolo (sou Dev / sou QA) */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .role-flags {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+        .role-flag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+
         .status-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(160px, 1fr));
@@ -112,7 +131,13 @@
 </head>
 
 <body>
-    <h1>point_down • Options</h1>
+    <div class="topbar">
+        <h1>point_down • Options</h1>
+        <div class="role-flags">
+            <label class="role-flag"><input id="isDev" type="checkbox" /> sou Dev</label>
+            <label class="role-flag"><input id="isQa" type="checkbox" /> sou QA</label>
+        </div>
+    </div>
 
     <label>Jira Base URL</label>
     <input id="baseUrl" type="text" placeholder="https://facilitygrid.atlassian.net" />

@@ -32,6 +32,9 @@ const enableQueueLockEl = document.getElementById('enableQueueLock');
 const enableWeekendEl = document.getElementById('enableWeekend');
 const advancedBtn = document.getElementById('advancedBtn');
 const advancedSection = document.getElementById('advancedSection');
+// Role flags
+const isDevEl = document.getElementById('isDev');
+const isQaEl = document.getElementById('isQa');
 
 // Checkboxes de Status
 const stTodoEl = document.getElementById('st_todo');
@@ -59,6 +62,8 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     const forceTestCard = !!forceTestCardEl?.checked;
     const enableQueueLock = !!enableQueueLockEl?.checked;
     const enableWeekend = !!enableWeekendEl?.checked;
+    const isDev = !!isDevEl?.checked;
+    const isQa = !!isQaEl?.checked;
 
     // monta objeto de filtros de status a partir das checkboxes
     const statusFilters = {
@@ -82,7 +87,8 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     await chrome.storage.sync.set({
         baseUrl, email, token, jql, alarmTime,
         forceTestCard, enableQueueLock, enableWeekend,
-        statusFilters
+        statusFilters,
+        isDev, isQa
     });
 
     statusEl.textContent = '✔️ Configurações salvas.';
@@ -124,11 +130,11 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     const {
         baseUrl, email, token, jql, alarmTime,
         forceTestCard, enableQueueLock, enableWeekend,
-        statusFilters
+        statusFilters, isDev, isQa
     } = await chrome.storage.sync.get([
         "baseUrl", "email", "token", "jql", "alarmTime",
         "forceTestCard", "enableQueueLock", "enableWeekend",
-        "statusFilters"
+        "statusFilters", "isDev", "isQa"
     ]);
 
     if (baseUrl) baseUrlEl.value = baseUrl;
@@ -166,6 +172,10 @@ document.getElementById('testBtn').addEventListener('click', async () => {
         stTestingEl.checked = !!src["Testing"];
         stQaEl.checked = !!src["QA"];
     })(statusFilters);
+
+    // Role flags defaults: desmarcados se ausentes
+    isDevEl.checked = (typeof isDev === 'boolean') ? isDev : false;
+    isQaEl.checked = (typeof isQa === 'boolean') ? isQa : false;
 
     // Avançadas permanece oculta até clique
     advancedSection.style.display = 'none';
