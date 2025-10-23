@@ -34,6 +34,26 @@ const advancedBtn = document.getElementById('advancedBtn');
 const advancedSection = document.getElementById('advancedSection');
 // Squad Mode (DEV-only)
 const squadModeSection = document.getElementById('squadModeSection');
+const squadModeBox = document.getElementById('squadModeBox');
+// Elementos que podem ser reposicionados
+const searchWordsBox = document.getElementById('searchWordsBox');
+const searchCodesBox = document.getElementById('searchCodesBox');
+
+function placeSearchWordsBoxInDev(isDev) {
+    if (!searchWordsBox) return;
+    if (isDev) {
+        // Move para dentro de Squad Mode
+        if (squadModeBox && searchWordsBox.parentElement !== squadModeBox) {
+            squadModeBox.appendChild(searchWordsBox);
+        }
+    } else {
+        // Retorna para Avançadas antes da seção de códigos, se existir
+        const parent = searchCodesBox?.parentElement || advancedSection;
+        if (parent && searchWordsBox.parentElement !== parent) {
+            parent.insertBefore(searchWordsBox, searchCodesBox || parent.firstChild);
+        }
+    }
+}
 // Role flags
 const isDevEl = document.getElementById('isDev');
 const isQaEl = document.getElementById('isQa');
@@ -103,6 +123,8 @@ isDevEl?.addEventListener('change', () => {
         squadModeSection.style.display = isDevEl.checked ? 'block' : 'none';
         squadModeSection.setAttribute('aria-hidden', String(!isDevEl.checked));
     }
+    // reposicionar UI de palavras
+    placeSearchWordsBoxInDev(!!isDevEl.checked);
 });
 isQaEl?.addEventListener('change', () => { 
     if (isQaEl.checked) {
@@ -123,6 +145,12 @@ isQaEl?.addEventListener('change', () => {
         if (forceTestCardEl) forceTestCardEl.checked = false;
         if (enableWeekendEl) enableWeekendEl.checked = false;
     } 
+    // esconder Squad Mode e retornar UI
+    if (squadModeSection) {
+        squadModeSection.style.display = 'none';
+        squadModeSection.setAttribute('aria-hidden', 'true');
+    }
+    placeSearchWordsBoxInDev(false);
 });
 
 function renderSearchWords() {
@@ -344,6 +372,9 @@ document.getElementById('testBtn').addEventListener('click', async () => {
         squadModeSection.style.display = isDevEl.checked ? 'block' : 'none';
         squadModeSection.setAttribute('aria-hidden', String(!isDevEl.checked));
     }
+
+    // Posicionar corretamente a caixa de palavras conforme perfil atual
+    placeSearchWordsBoxInDev(!!isDevEl.checked);
 
     // carrega palavras
     searchWords = Array.isArray(storedSearchWords) ? storedSearchWords.filter(Boolean) : [];
