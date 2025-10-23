@@ -163,6 +163,19 @@
             margin: 0;
             font-weight: 500;
         }
+
+        /* Squad Mode (visível somente para DEV) */
+        #squadModeSection {
+            display: none; /* controlado por JS */
+            margin: 16px 0;
+        }
+        .squad-mode-box {
+            background: #e5e5e5;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            min-height: 220px;
+            padding: 12px;
+        }
     </style>
 </head>
 
@@ -198,6 +211,12 @@
     <label>JQL (opcional, para filtrar os cards)</label>
     <input id="jql" type="text" placeholder='sprint in openSprints() AND assignee = currentUser()' />
     <small class="hint"></small>
+
+    <!-- Squad Mode (apenas para DEV) -->
+    <div id="squadModeSection" aria-hidden="true">
+        <h2>Squad Mode</h2>
+        <div id="squadModeBox" class="squad-mode-box"></div>
+    </div>
 
     <hr />
 

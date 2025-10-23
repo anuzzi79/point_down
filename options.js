@@ -32,6 +32,8 @@ const enableQueueLockEl = document.getElementById('enableQueueLock');
 const enableWeekendEl = document.getElementById('enableWeekend');
 const advancedBtn = document.getElementById('advancedBtn');
 const advancedSection = document.getElementById('advancedSection');
+// Squad Mode (DEV-only)
+const squadModeSection = document.getElementById('squadModeSection');
 // Role flags
 const isDevEl = document.getElementById('isDev');
 const isQaEl = document.getElementById('isQa');
@@ -92,7 +94,16 @@ function applyStatusPreset(preset) {
 }
 
 // Ao marcar uma role, aplicamos o preset correspondente (última ação vence)
-isDevEl?.addEventListener('change', () => { if (isDevEl.checked) applyStatusPreset(PRESET_DEV_STATUS); });
+isDevEl?.addEventListener('change', () => { 
+    if (isDevEl.checked) {
+        applyStatusPreset(PRESET_DEV_STATUS);
+    }
+    // mostrar/ocultar Squad Mode
+    if (squadModeSection) {
+        squadModeSection.style.display = isDevEl.checked ? 'block' : 'none';
+        squadModeSection.setAttribute('aria-hidden', String(!isDevEl.checked));
+    }
+});
 isQaEl?.addEventListener('change', () => { 
     if (isQaEl.checked) {
         applyStatusPreset(PRESET_QA_STATUS);
@@ -326,6 +337,12 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     if (isQaEl.checked) {
         if (forceTestCardEl) forceTestCardEl.checked = false;
         if (enableWeekendEl) enableWeekendEl.checked = false;
+    }
+
+    // Exibir Squad Mode apenas para DEV
+    if (squadModeSection) {
+        squadModeSection.style.display = isDevEl.checked ? 'block' : 'none';
+        squadModeSection.setAttribute('aria-hidden', String(!isDevEl.checked));
     }
 
     // carrega palavras
