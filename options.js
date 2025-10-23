@@ -93,11 +93,26 @@ function applyStatusPreset(preset) {
 
 // Ao marcar uma role, aplicamos o preset correspondente (última ação vence)
 isDevEl?.addEventListener('change', () => { if (isDevEl.checked) applyStatusPreset(PRESET_DEV_STATUS); });
-isQaEl?.addEventListener('change', () => { if (isQaEl.checked) applyStatusPreset(PRESET_QA_STATUS); });
+isQaEl?.addEventListener('change', () => { 
+    if (isQaEl.checked) {
+        applyStatusPreset(PRESET_QA_STATUS);
+        // Regras adicionais para perfil QA: desmarcar card de teste e fim de semana
+        if (forceTestCardEl) forceTestCardEl.checked = false;
+        if (enableWeekendEl) enableWeekendEl.checked = false;
+    }
+});
 
 // tornar Dev/QA mutuamente exclusivos
 isDevEl?.addEventListener('change', () => { if (isDevEl.checked) { isQaEl.checked = false; applyStatusPreset(PRESET_DEV_STATUS); } });
-isQaEl?.addEventListener('change', () => { if (isQaEl.checked) { isDevEl.checked = false; applyStatusPreset(PRESET_QA_STATUS); } });
+isQaEl?.addEventListener('change', () => { 
+    if (isQaEl.checked) { 
+        isDevEl.checked = false; 
+        applyStatusPreset(PRESET_QA_STATUS); 
+        // Garantir políticas QA também aqui
+        if (forceTestCardEl) forceTestCardEl.checked = false;
+        if (enableWeekendEl) enableWeekendEl.checked = false;
+    } 
+});
 
 function renderSearchWords() {
     searchWordsListEl.innerHTML = '';
@@ -306,6 +321,12 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     isQaEl.checked = (typeof isQa === 'boolean') ? isQa : false;
     // refletir exclusividade visual
     if (isDevEl.checked && isQaEl.checked) { isQaEl.checked = false; }
+
+    // Se já estiver no perfil QA ao carregar, aplicar políticas QA
+    if (isQaEl.checked) {
+        if (forceTestCardEl) forceTestCardEl.checked = false;
+        if (enableWeekendEl) enableWeekendEl.checked = false;
+    }
 
     // carrega palavras
     searchWords = Array.isArray(storedSearchWords) ? storedSearchWords.filter(Boolean) : [];
