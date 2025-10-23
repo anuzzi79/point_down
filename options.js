@@ -41,6 +41,12 @@ const addSearchWordBtn = document.getElementById('addSearchWordBtn');
 const searchWordsListEl = document.getElementById('searchWordsList');
 let searchWords = [];
 
+// ✅ Procure por código
+const searchCodeInputEl = document.getElementById('searchCodeInput');
+const addSearchCodeBtn = document.getElementById('addSearchCodeBtn');
+const searchCodesListEl = document.getElementById('searchCodesList');
+let searchCodes = []; // array de strings numéricas (ex.: "9683")
+
 // Checkboxes de Status
 const stTodoEl = document.getElementById('st_todo');
 const stInProgressEl = document.getElementById('st_inprogress');
@@ -128,6 +134,44 @@ addSearchWordBtn?.addEventListener('click', async () => {
     searchWordInputEl.focus();
 });
 
+// ✅ Codes chips
+function renderSearchCodes() {
+    searchCodesListEl.innerHTML = '';
+    (searchCodes || []).forEach((num, idx) => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        const txt = document.createElement('span');
+        txt.textContent = `FGC-${num}`;
+        const rm = document.createElement('span');
+        rm.className = 'remove';
+        rm.textContent = '×';
+        rm.title = 'Remover';
+        rm.addEventListener('click', async () => {
+            searchCodes.splice(idx, 1);
+            renderSearchCodes();
+            await chrome.storage.sync.set({ searchCodes });
+        });
+        chip.appendChild(txt);
+        chip.appendChild(rm);
+        searchCodesListEl.appendChild(chip);
+    });
+}
+
+addSearchCodeBtn?.addEventListener('click', async () => {
+    // permite que o usuário digite qualquer coisa; extraímos apenas dígitos
+    const raw = (searchCodeInputEl.value || '').trim();
+    const onlyDigits = raw.replace(/\D+/g, '');
+    if (!onlyDigits) return;
+    // evita duplicados
+    if (!searchCodes.includes(onlyDigits)) {
+        searchCodes.push(onlyDigits);
+        renderSearchCodes();
+        await chrome.storage.sync.set({ searchCodes });
+    }
+    searchCodeInputEl.value = '';
+    searchCodeInputEl.focus();
+});
+
 // Toggle sezione Avançadas (di default nascosta)
 advancedBtn.addEventListener('click', () => {
     const visible = advancedSection.style.display === 'block';
@@ -169,7 +213,9 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
         baseUrl, email, token, jql, alarmTime,
         forceTestCard, enableQueueLock, enableWeekend,
         statusFilters,
-        isDev, isQa
+        isDev, isQa,
+        searchWords,
+        searchCodes
     });
 
     statusEl.textContent = '✔️ Configurações salvas.';
@@ -211,11 +257,12 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     const {
         baseUrl, email, token, jql, alarmTime,
         forceTestCard, enableQueueLock, enableWeekend,
-        statusFilters, isDev, isQa, searchWords: storedSearchWords
+        statusFilters, isDev, isQa, searchWords: storedSearchWords,
+        searchCodes: storedSearchCodes
     } = await chrome.storage.sync.get([
         "baseUrl", "email", "token", "jql", "alarmTime",
         "forceTestCard", "enableQueueLock", "enableWeekend",
-        "statusFilters", "isDev", "isQa", "searchWords"
+        "statusFilters", "isDev", "isQa", "searchWords", "searchCodes"
     ]);
 
     if (baseUrl) baseUrlEl.value = baseUrl;
@@ -263,6 +310,12 @@ document.getElementById('testBtn').addEventListener('click', async () => {
     // carrega palavras
     searchWords = Array.isArray(storedSearchWords) ? storedSearchWords.filter(Boolean) : [];
     renderSearchWords();
+
+    // ✅ carrega códigos (somente dígitos)
+    searchCodes = Array.isArray(storedSearchCodes)
+        ? storedSearchCodes.map(s => String(s).replace(/\D+/g, '')).filter(Boolean)
+        : [];
+    renderSearchCodes();
 
     // Avançadas permanece oculta até clique
     advancedSection.style.display = 'none';

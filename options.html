@@ -116,7 +116,7 @@
             font-weight: 600;
         }
 
-        /* Procure por palavra */
+        /* Procure por palavra / código: UI riutilizzabile */
         .search-row {
             display: flex;
             gap: 8px;
@@ -128,11 +128,11 @@
             padding: 8px;
         }
         .search-row button {
-            margin-top: 0;            /* override dello stile globale dei bottoni */
-            padding: 0 12px;          /* compatto, stessa altezza dell'input */
+            margin-top: 0;          /* override dello stile globale */
+            padding: 0 12px;        /* compatto, stessa altezza dell'input */
         }
 
-        .search-words {
+        .search-words, .search-codes {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
@@ -239,6 +239,17 @@
             </div>
             <small class="hint">No modal serão exibidas todas as cards encontradas na sprint com as palavras:</small>
             <div id="searchWordsList" class="search-words"></div>
+        </fieldset>
+
+        <!-- ✅ NOVO: Procure por código do card -->
+        <fieldset id="searchCodesBox">
+            <legend>Procure por código do card</legend>
+            <div class="search-row">
+                <input id="searchCodeInput" type="text" inputmode="numeric" placeholder="FGC-1234  →  basta digitar apenas o número (ex.: 1234)" />
+                <button id="addSearchCodeBtn" title="Adicionar código">+</button>
+            </div>
+            <small class="hint">Insira somente a parte numérica do código (o projeto “FGC-” é adicionado automaticamente). Ex.: digite <b>9683</b> para incluir <b>FGC-9683</b>.</small>
+            <div id="searchCodesList" class="search-codes"></div>
         </fieldset>
 
         <!-- Opzioni avanzate rimanenti -->

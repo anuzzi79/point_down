@@ -726,6 +726,22 @@ async function init() {
             ]);
         }
 
+        // === “Procure por código do card”: incluir TAMBÉM cards específicas (FGC-<num>)
+        const { searchCodes } = await chrome.storage.sync.get(["searchCodes"]);
+        const codeNums = Array.isArray(searchCodes)
+            ? searchCodes.map(s => String(s).replace(/\D+/g, '')).filter(Boolean)
+            : [];
+        let codeIssues = [];
+        if (codeNums.length > 0) {
+            const keys = codeNums.map(n => `FGC-${n}`);
+            const fetched = await Promise.allSettled(
+                keys.map(k => fetchIssueByKey(k))
+            );
+            codeIssues = fetched
+                .filter(r => r.status === "fulfilled" && r.value && r.value.key)
+                .map(r => r.value);
+        }
+
         let forcedIssue = null;
         if (forceTestCard) {
             try {
@@ -738,12 +754,21 @@ async function init() {
         const mainKeys = new Set(mainIssues.map(i => i.key));
         const specialsDedup = specialIssues.filter(i => !mainKeys.has(i.key));
 
+        // de-dup fra i gruppi e i codici espliciti
+        const codeDedup = codeIssues.filter(ci => !mainKeys.has(ci.key) && !specialsDedup.some(s => s.key === ci.key));
+
         const { baseUrl: _b } = await getAuth();
         MODEL_MAIN = mainIssues.map(x => ({ ...x, _baseUrl: _b, dirty: false, pts: x.sp }));
         MODEL_SPECIAL = specialsDedup.map(x => ({ ...x, _baseUrl: _b, dirty: false, _special: true, pts: x.sp }));
 
+        // cards da lista “códigos” entram ANCHE nel main
+        // (mantém também os novos campos de status)
+        for (const ci of codeDedup) {
+            MODEL_MAIN.unshift({ ...ci, _baseUrl: _b, dirty: false, pts: ci.sp });
+            mainKeys.add(ci.key);
+        }
+
         if (forcedIssue && !mainKeys.has(forcedIssue.key) && !MODEL_SPECIAL.some(i => i.key === forcedIssue.key)) {
-            // Mantém também os novos campos de status
             const forcedWithStatus = { ...forcedIssue, _baseUrl: _b, dirty: false, pts: forcedIssue.sp };
             MODEL_MAIN.unshift(forcedWithStatus);
             console.log("[point_down] FGC-9683 adicionada (opção habilitada).");
