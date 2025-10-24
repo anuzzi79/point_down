@@ -21,6 +21,19 @@ const DEFAULT_STATUS_FILTERS = {
     "QA": true,
 };
 
+// Palavras padrão para perfil DEV (Squad Mode)
+const DEFAULT_DEV_WORDS = ["Support DEV", "Buffer"];
+
+function areDefaultDevWords(list) {
+    if (!Array.isArray(list)) return false;
+    const norm = (arr) => arr.map(s => String(s).trim().toLowerCase()).sort();
+    const a = norm(list);
+    const b = norm(DEFAULT_DEV_WORDS);
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) return false; }
+    return true;
+}
+
 const baseUrlEl = document.getElementById('baseUrl');
 const emailEl = document.getElementById('email');
 const tokenEl = document.getElementById('token');
@@ -39,6 +52,7 @@ const squadEpicBox = document.getElementById('squadEpicBox');
 // Elementos que podem ser reposicionados
 const searchWordsBox = document.getElementById('searchWordsBox');
 const searchCodesBox = document.getElementById('searchCodesBox');
+const statusFiltersBox = document.getElementById('statusFiltersBox');
 
 function placeSearchWordsBoxInDev(isDev) {
     if (!searchWordsBox) return;
@@ -55,6 +69,46 @@ function placeSearchWordsBoxInDev(isDev) {
             parent.insertBefore(searchWordsBox, searchCodesBox || parent.firstChild);
         }
     }
+}
+
+function findScheduleHeader() {
+    let node = alarmEl;
+    while (node && node.previousElementSibling) {
+        node = node.previousElementSibling;
+        if (node.tagName === 'H2') return node;
+    }
+    return alarmEl; // fallback
+}
+
+function placeStatusFiltersInMain({ dev = false, qa = false } = {}) {
+    if (!statusFiltersBox) return;
+    if (dev) {
+        const beforeNode = document.getElementById('squadModeSection');
+        const parent = document.body;
+        if (beforeNode && statusFiltersBox.parentElement !== parent) {
+            parent.insertBefore(statusFiltersBox, beforeNode);
+        }
+        statusFiltersBox.style.marginTop = '16px';
+        return;
+    }
+    if (qa) {
+        const beforeNode = findScheduleHeader();
+        const parent = document.body;
+        if (beforeNode && statusFiltersBox.parentElement !== parent) {
+            parent.insertBefore(statusFiltersBox, beforeNode);
+        }
+        statusFiltersBox.style.marginTop = '16px';
+        return;
+    }
+    const insertBefore = document.getElementById('searchWordsBox') || searchCodesBox;
+    if (advancedSection && statusFiltersBox.parentElement !== advancedSection) {
+        if (insertBefore && insertBefore.parentElement === advancedSection) {
+            advancedSection.insertBefore(statusFiltersBox, insertBefore);
+        } else {
+            advancedSection.appendChild(statusFiltersBox);
+        }
+    }
+    statusFiltersBox.style.marginTop = '0';
 }
 // Role flags
 const isDevEl = document.getElementById('isDev');
@@ -90,11 +144,11 @@ const stQaEl = document.getElementById('st_qa');
 
 // Presets de status conforme os screenshots
 const PRESET_DEV_STATUS = {
-    "To Do": false,
+    "To Do": true,
     "In Progress": true,
     "Blocked": true,
     "Need Reqs": true,
-    "Done": false,
+    "Done": true,
     "Code Review": true,
     "Testing": true,
     "QA": true,
@@ -133,6 +187,14 @@ isDevEl?.addEventListener('change', () => {
     }
     // reposicionar UI de palavras
     placeSearchWordsBoxInDev(!!isDevEl.checked);
+    // reposicionar filtros de status
+    placeStatusFiltersInMain({ dev: !!isDevEl.checked, qa: false });
+    // se entrou em DEV e ainda não há palavras, aplicar defaults DEV
+    if (isDevEl.checked && Array.isArray(searchWords) && searchWords.length === 0) {
+        searchWords.push(...DEFAULT_DEV_WORDS);
+        renderSearchWords();
+        chrome.storage.sync.set({ searchWords }).catch(() => {});
+    }
 });
 isQaEl?.addEventListener('change', () => { 
     if (isQaEl.checked) {
@@ -140,6 +202,12 @@ isQaEl?.addEventListener('change', () => {
         // Regras adicionais para perfil QA: desmarcar card de teste e fim de semana
         if (forceTestCardEl) forceTestCardEl.checked = false;
         if (enableWeekendEl) enableWeekendEl.checked = false;
+        // Para QA, palavras devem ficar vazias por padrão se apenas defaults DEV estiverem presentes
+        if (areDefaultDevWords(searchWords)) {
+            searchWords = [];
+            renderSearchWords();
+            chrome.storage.sync.set({ searchWords }).catch(() => {});
+        }
     }
 });
 
@@ -159,6 +227,7 @@ isQaEl?.addEventListener('change', () => {
         squadModeSection.setAttribute('aria-hidden', 'true');
     }
     placeSearchWordsBoxInDev(false);
+    placeStatusFiltersInMain({ dev: false, qa: !!isQaEl.checked });
 });
 
 function renderSearchWords() {
@@ -425,9 +494,21 @@ document.getElementById('testBtn').addEventListener('click', async () => {
 
     // Posicionar corretamente a caixa de palavras conforme perfil atual
     placeSearchWordsBoxInDev(!!isDevEl.checked);
+    // Posicionar corretamente filtros de status conforme perfil atual
+    placeStatusFiltersInMain({ dev: !!isDevEl.checked, qa: !!isQaEl.checked });
 
     // carrega palavras
     searchWords = Array.isArray(storedSearchWords) ? storedSearchWords.filter(Boolean) : [];
+    // Se estiver em DEV e ainda não houver palavras, definir defaults DEV
+    if (isDevEl.checked && searchWords.length === 0) {
+        searchWords = [...DEFAULT_DEV_WORDS];
+        await chrome.storage.sync.set({ searchWords }).catch(() => {});
+    }
+    // Se estiver em QA e as palavras forem apenas os defaults de DEV, limpar para padrão vazio
+    if (isQaEl.checked && areDefaultDevWords(searchWords)) {
+        searchWords = [];
+        await chrome.storage.sync.set({ searchWords }).catch(() => {});
+    }
     renderSearchWords();
 
     // ✅ carrega códigos (somente dígitos)

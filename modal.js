@@ -293,6 +293,62 @@ async function fetchSpecialSprintIssues() {
     return fetchIssuesByJql(specialJql, spFieldId);
 }
 
+/* -----------------------------------------------------------------------
+   DEV Squad Mode: buscar por palavras (independente de assignee)
+   - usa somente as palavras configuradas em Options (searchWords)
+   - procura APENAS em summary (título), com suporte a prefixo ("term" e "term*")
+   - aplica os mesmos filtros de status das Opções
+----------------------------------------------------------------------- */
+function buildWordsOnlyClause(words = []) {
+    const parts = [];
+    const safeWords = (Array.isArray(words) ? words : []).filter(Boolean);
+    for (const w of safeWords) {
+        const term = String(w).replace(/"/g, '\\"');
+        parts.push(`(summary ~ "${term}" OR summary ~ "${term}*")`);
+    }
+    return parts.join(" OR ");
+}
+
+// Clause para épicos: cobre tanto parent quanto "Epic Link" (compatibilidade CM/TM)
+function buildEpicClause(epicKeys = []) {
+    const keys = (Array.isArray(epicKeys) ? epicKeys : []).filter(Boolean);
+    if (keys.length === 0) return "";
+    const parts = [];
+    for (const k of keys) {
+        const key = String(k).replace(/"/g, '\\"');
+        parts.push(`(parent = ${key} OR \"Epic Link\" = ${key})`);
+    }
+    return parts.join(" OR ");
+}
+
+// Busca DEV Squad combinando Palavras e/ou Épicos
+// - Se houver palavras E épicos: AND entre os grupos
+// - Se houver apenas um dos grupos: usa só aquele
+async function fetchSquadDevIssues() {
+    const { statusFilters } = await getAuth();
+    const { searchWords, squadEpicCodes } = await chrome.storage.sync.get(["searchWords", "squadEpicCodes"]);
+    const spFieldId = await resolveStoryPointsFieldId();
+
+    const words = Array.isArray(searchWords) ? searchWords.filter(Boolean) : [];
+    const epicNums = Array.isArray(squadEpicCodes)
+        ? squadEpicCodes.map(s => String(s).replace(/\D+/g, '')).filter(Boolean)
+        : [];
+    const epicKeys = epicNums.map(n => `FGC-${n}`);
+
+    const wordsClause = buildWordsOnlyClause(words);
+    const epicClause = buildEpicClause(epicKeys);
+
+    if (!wordsClause && !epicClause) return [];
+
+    let combined;
+    if (wordsClause && epicClause) combined = `(${epicClause}) AND (${wordsClause})`;
+    else combined = `(${wordsClause || epicClause})`;
+
+    const baseJql = `sprint in openSprints() AND ${combined}`;
+    const finalJql = jqlWithDynamicStatuses(baseJql, statusFilters);
+    return fetchIssuesByJql(finalJql, spFieldId);
+}
+
 /** Fetch por chave específica */
 async function fetchIssueByKey(issueKey) {
     const { baseUrl, email, token } = await getAuth();
@@ -461,6 +517,9 @@ async function releaseLock(issue, myLock) {
 const listEl = document.getElementById('list');
 const specialSectionEl = document.getElementById('specialSection');
 const specialListEl = document.getElementById('specialList');
+const squadOutputSectionEl = document.getElementById('squadOutputSection');
+const squadListEl = document.getElementById('squadList');
+const squadZeroToggleEl = document.getElementById('squadZeroToggle');
 const mainZeroToggleEl = document.getElementById('mainZeroToggle');
 const specialZeroToggleEl = document.getElementById('specialZeroToggle');
 
@@ -477,6 +536,7 @@ let watchdog = null;
 // Flags di filtro zerados (default: occultati)
 let HIDE_ZERO_MAIN = true;
 let HIDE_ZERO_SPECIAL = true;
+let HIDE_ZERO_SQUAD = true;
 
 /* ---- PULSE control (Save) -------------------------------------------- */
 function anyDirty() {
@@ -595,20 +655,36 @@ function updateZeroToggles() {
         specialZeroToggleEl.textContent = HIDE_ZERO_SPECIAL ? "Mostra os cards zerados" : "Oculte os cards zerados";
         specialZeroToggleEl.onclick = () => { HIDE_ZERO_SPECIAL = !HIDE_ZERO_SPECIAL; render(); };
     }
+    if (squadZeroToggleEl) {
+        squadZeroToggleEl.textContent = HIDE_ZERO_SQUAD ? "Mostra os cards zerados" : "Oculte os cards zerados";
+        squadZeroToggleEl.onclick = () => { HIDE_ZERO_SQUAD = !HIDE_ZERO_SQUAD; render(); };
+    }
 }
 
-function render() {
+async function render() {
     // Applica filtro zerados per ciascuna sezione
     const mainVis = visibleItems(MODEL_MAIN, HIDE_ZERO_MAIN);
     renderList(listEl, mainVis);
 
     const specialVis = visibleItems(MODEL_SPECIAL, HIDE_ZERO_SPECIAL);
-    if (specialVis.length > 0 || MODEL_SPECIAL.length > 0) {
+    const isDev = (await getAuth())?.isDev;
+    // QA special section only when not DEV
+    if (!isDev && (specialVis.length > 0 || MODEL_SPECIAL.length > 0)) {
         specialSectionEl.classList.remove('hidden');
         renderList(specialListEl, specialVis);
     } else {
         specialSectionEl.classList.add('hidden');
         specialListEl.innerHTML = '';
+    }
+
+    // DEV squad output section
+    const squadVis = visibleItems(MODEL_SPECIAL, HIDE_ZERO_SQUAD);
+    if (isDev && (squadVis.length > 0 || MODEL_SPECIAL.length > 0)) {
+        squadOutputSectionEl.classList.remove('hidden');
+        renderList(squadListEl, squadVis);
+    } else {
+        squadOutputSectionEl.classList.add('hidden');
+        squadListEl.innerHTML = '';
     }
 
     // Aggiorna i testi dei toggle
@@ -705,6 +781,7 @@ async function init() {
     // Reset default filtro: occultare zerados a ogni lancio
     HIDE_ZERO_MAIN = true;
     HIDE_ZERO_SPECIAL = true;
+    HIDE_ZERO_SQUAD = true;
     updateZeroToggles();
 
     try {
@@ -716,9 +793,14 @@ async function init() {
         let mainIssues = [];
         let specialIssues = [];
         if (isDev) {
-            // Para DEV, não buscamos seção especial
-            mainIssues = await fetchCurrentSprintIssues();
-            specialIssues = [];
+            // Para DEV: lista principal (assignee=currentUser) + Squad (palavras/épicos)
+            const [m, squad] = await Promise.all([
+                fetchCurrentSprintIssues(),
+                fetchSquadDevIssues()
+            ]);
+            mainIssues = m;
+            // recycle variável special para etapa de de-dup genérica
+            specialIssues = Array.isArray(squad) ? squad : [];
         } else {
             [mainIssues, specialIssues] = await Promise.all([
                 fetchCurrentSprintIssues(),
