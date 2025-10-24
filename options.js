@@ -35,6 +35,7 @@ const advancedSection = document.getElementById('advancedSection');
 // Squad Mode (DEV-only)
 const squadModeSection = document.getElementById('squadModeSection');
 const squadModeBox = document.getElementById('squadModeBox');
+const squadEpicBox = document.getElementById('squadEpicBox');
 // Elementos que podem ser reposicionados
 const searchWordsBox = document.getElementById('searchWordsBox');
 const searchCodesBox = document.getElementById('searchCodesBox');
@@ -44,7 +45,8 @@ function placeSearchWordsBoxInDev(isDev) {
     if (isDev) {
         // Move para dentro de Squad Mode
         if (squadModeBox && searchWordsBox.parentElement !== squadModeBox) {
-            squadModeBox.appendChild(searchWordsBox);
+            // Inserir ANTES do bloco de épicos para manter a ordem desejada
+            squadModeBox.insertBefore(searchWordsBox, squadEpicBox || squadModeBox.firstChild);
         }
     } else {
         // Retorna para Avançadas antes da seção de códigos, se existir
@@ -68,6 +70,12 @@ const searchCodeInputEl = document.getElementById('searchCodeInput');
 const addSearchCodeBtn = document.getElementById('addSearchCodeBtn');
 const searchCodesListEl = document.getElementById('searchCodesList');
 let searchCodes = []; // array de strings numéricas (ex.: "9683")
+
+// ✅ Squad Mode: épicos (FGC-1234) — armazenamento separado
+const squadEpicInputEl = document.getElementById('squadEpicInput');
+const addSquadEpicBtn = document.getElementById('addSquadEpicBtn');
+const squadEpicListEl = document.getElementById('squadEpicList');
+let squadEpicCodes = []; // array de strings numéricas
 
 // Checkboxes de Status
 const stTodoEl = document.getElementById('st_todo');
@@ -211,6 +219,30 @@ function renderSearchCodes() {
     });
 }
 
+// ✅ Render épicos no estilo chips "FGC-<num>"
+function renderSquadEpics() {
+    if (!squadEpicListEl) return;
+    squadEpicListEl.innerHTML = '';
+    (squadEpicCodes || []).forEach((num, idx) => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        const txt = document.createElement('span');
+        txt.textContent = `FGC-${num}`;
+        const rm = document.createElement('span');
+        rm.className = 'remove';
+        rm.textContent = '×';
+        rm.title = 'Remover';
+        rm.addEventListener('click', async () => {
+            squadEpicCodes.splice(idx, 1);
+            renderSquadEpics();
+            await chrome.storage.sync.set({ squadEpicCodes });
+        });
+        chip.appendChild(txt);
+        chip.appendChild(rm);
+        squadEpicListEl.appendChild(chip);
+    });
+}
+
 addSearchCodeBtn?.addEventListener('click', async () => {
     // permite que o usuário digite qualquer coisa; extraímos apenas dígitos
     const raw = (searchCodeInputEl.value || '').trim();
@@ -224,6 +256,22 @@ addSearchCodeBtn?.addEventListener('click', async () => {
     }
     searchCodeInputEl.value = '';
     searchCodeInputEl.focus();
+});
+
+// ✅ Add épico
+addSquadEpicBtn?.addEventListener('click', async () => {
+    const raw = (squadEpicInputEl?.value || '').trim();
+    const onlyDigits = raw.replace(/\D+/g, '');
+    if (!onlyDigits) return;
+    if (!squadEpicCodes.includes(onlyDigits)) {
+        squadEpicCodes.push(onlyDigits);
+        renderSquadEpics();
+        await chrome.storage.sync.set({ squadEpicCodes });
+    }
+    if (squadEpicInputEl) {
+        squadEpicInputEl.value = '';
+        squadEpicInputEl.focus();
+    }
 });
 
 // Toggle sezione Avançadas (di default nascosta)
@@ -269,7 +317,8 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
         statusFilters,
         isDev, isQa,
         searchWords,
-        searchCodes
+        searchCodes,
+        squadEpicCodes
     });
 
     statusEl.textContent = '✔️ Configurações salvas.';
@@ -312,11 +361,12 @@ document.getElementById('testBtn').addEventListener('click', async () => {
         baseUrl, email, token, jql, alarmTime,
         forceTestCard, enableQueueLock, enableWeekend,
         statusFilters, isDev, isQa, searchWords: storedSearchWords,
-        searchCodes: storedSearchCodes
+        searchCodes: storedSearchCodes,
+        squadEpicCodes: storedSquadEpicCodes
     } = await chrome.storage.sync.get([
         "baseUrl", "email", "token", "jql", "alarmTime",
         "forceTestCard", "enableQueueLock", "enableWeekend",
-        "statusFilters", "isDev", "isQa", "searchWords", "searchCodes"
+        "statusFilters", "isDev", "isQa", "searchWords", "searchCodes", "squadEpicCodes"
     ]);
 
     if (baseUrl) baseUrlEl.value = baseUrl;
@@ -385,6 +435,12 @@ document.getElementById('testBtn').addEventListener('click', async () => {
         ? storedSearchCodes.map(s => String(s).replace(/\D+/g, '')).filter(Boolean)
         : [];
     renderSearchCodes();
+
+    // ✅ carrega épicos (somente dígitos)
+    squadEpicCodes = Array.isArray(storedSquadEpicCodes)
+        ? storedSquadEpicCodes.map(s => String(s).replace(/\D+/g, '')).filter(Boolean)
+        : [];
+    renderSquadEpics();
 
     // Avançadas permanece oculta até clique
     advancedSection.style.display = 'none';

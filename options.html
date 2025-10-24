@@ -215,7 +215,18 @@
     <!-- Squad Mode (apenas para DEV) -->
     <div id="squadModeSection" aria-hidden="true">
         <h2>Squad Mode</h2>
-        <div id="squadModeBox" class="squad-mode-box"></div>
+        <div id="squadModeBox" class="squad-mode-box">
+            <!-- Campo de Épicos (estilo semelhante ao de códigos) -->
+            <fieldset id="squadEpicBox">
+                <legend>E que pertençam a estes Épicos</legend>
+                <div class="search-row">
+                    <input id="squadEpicInput" type="text" inputmode="numeric" placeholder="FGC-1234  →  basta digitar apenas o número (ex.: 1234)" />
+                    <button id="addSquadEpicBtn" title="Adicionar épico">+</button>
+                </div>
+                <small class="hint">Insira somente a parte numérica do código do épico. Ex.: digite <b>6488</b> para incluir <b>FGC-6488</b>.</small>
+                <div id="squadEpicList" class="search-codes"></div>
+            </fieldset>
+        </div>
     </div>
 
     <hr />
